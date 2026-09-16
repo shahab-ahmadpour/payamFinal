@@ -49,17 +49,12 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestCertificateThumbprint>ECCC024788977F85071D78E82E627F0D3E471E11</ManifestCertificateThumbprint>
-  </PropertyGroup>
-  <PropertyGroup>
-    <ManifestKeyFile>AutoClickUI_TemporaryKey.pfx</ManifestKeyFile>
-  </PropertyGroup>
-  <PropertyGroup>
     <GenerateManifests>true</GenerateManifests>
-  </PropertyGroup>
-  <PropertyGroup>
+    <!-- Signing requires a local PFX; without it publish/build must still succeed. -->
+    <SignManifests>false</SignManifests>
     <SignManifests Condition="Exists('AutoClickUI_TemporaryKey.pfx')">true</SignManifests>
-    <SignManifests Condition="!Exists('AutoClickUI_TemporaryKey.pfx')">false</SignManifests>
+    <ManifestKeyFile Condition="Exists('AutoClickUI_TemporaryKey.pfx')">AutoClickUI_TemporaryKey.pfx</ManifestKeyFile>
+    <ManifestCertificateThumbprint Condition="Exists('AutoClickUI_TemporaryKey.pfx')">ECCC024788977F85071D78E82E627F0D3E471E11</ManifestCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>icon-2.ico</ApplicationIcon>
