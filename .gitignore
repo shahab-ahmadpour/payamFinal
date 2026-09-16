@@ -14,6 +14,10 @@
 *.p12
 *.key
 
+## Local secrets / machine auth (do not commit)
+share_auth_config.txt
+payam_time_config.txt
+
 ## Publish / ClickOnce leftovers
 *.application
 *.exe.manifest
