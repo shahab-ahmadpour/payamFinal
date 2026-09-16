@@ -112,6 +112,8 @@ namespace AutoClickUI
         private TimeSourceMode timeSourceMode = TimeSourceMode.PayamApi;
         private PayamTimeConfig payamConfig = new PayamTimeConfig();
         private PayamTimeProvider payamTimeProvider;
+        private ShareAuthConfig shareAuthConfig = new ShareAuthConfig();
+        private volatile bool shareConnected = false;
 
         // threading
         private Thread liveTimeThread;
@@ -149,6 +151,10 @@ namespace AutoClickUI
         private TextBox txtPayamApiUrl;
         private TextBox txtPayamYearCode;
         private TextBox txtPayamContentTypeOptions;
+        private TextBox txtShareRoot;
+        private TextBox txtShareDomain;
+        private TextBox txtShareUsername;
+        private TextBox txtSharePassword;
 
         private NumericUpDown nudMilliseconds;
         private NumericUpDown nudClickCount;
@@ -161,6 +167,8 @@ namespace AutoClickUI
         private Button btnSyncNtp;
         private Button btnSyncPayam;
         private Button btnSavePayamConfig;
+        private Button btnSaveShareAuth;
+        private Button btnConnectShare;
         private Button btnStart;
         private Button btnStop;
         private Button btnBrowseConfig;
@@ -177,7 +185,10 @@ namespace AutoClickUI
         private SurfacePanel panelStatusChips;
         private SurfacePanel panelSettingsFolders;
         private SurfacePanel panelSettingsPayam;
+        private SurfacePanel panelSettingsShare;
         private ThinProgressBar progressCountdown;
+        private CheckBox chkShareAuthEnabled;
+        private Label lblShareAuthStatus;
 
         private NavButton btnNavConsole;
         private NavButton btnNavSettings;
@@ -198,6 +209,11 @@ namespace AutoClickUI
             timeBeginPeriod(1);
 
             InitializeComponent();
+
+            // 0) Authenticate to UNC config share (critical when running as Administrator)
+            shareAuthConfig = ShareAuthConfig.Load();
+            ApplyShareAuthToUi();
+            EnsureShareConnected(logResult: true);
 
             // 1) Payam API time config (default time source)
             payamConfig = PayamTimeConfig.Load();
@@ -627,6 +643,8 @@ namespace AutoClickUI
         {
             try
             {
+                EnsureShareConnected(logResult: false);
+
                 if (string.IsNullOrWhiteSpace(NTP_CONFIG_DIR) || !Directory.Exists(NTP_CONFIG_DIR))
                 {
                     LogMessage($"Cannot save NTP config. Directory not accessible: {NTP_CONFIG_DIR}", Color.Red);
@@ -1119,6 +1137,144 @@ namespace AutoClickUI
         }
 
         // -------------------------
+        // Network share authentication
+        // -------------------------
+        private bool EnsureShareConnected(bool logResult)
+        {
+            try
+            {
+                if (shareAuthConfig == null)
+                    shareAuthConfig = ShareAuthConfig.Load();
+
+                // Prefer live config-folder UNC if present.
+                string folder = SafeGetText(txtConfigFolder) ?? configFolder;
+                string message;
+                bool ok = NetworkShareAuth.EnsureConnectedForPath(shareAuthConfig, folder, out message);
+                shareConnected = ok;
+
+                if (logResult)
+                {
+                    if (ok)
+                        LogMessage(message ?? "Share connected.", Color.Green);
+                    else
+                        LogMessage(message ?? "Share connect failed.", Color.Orange);
+                }
+
+                UI(UpdateShareAuthStatusLabel);
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                shareConnected = false;
+                if (logResult)
+                    LogMessage("Share connect error: " + ex.Message, Color.Red);
+                UI(UpdateShareAuthStatusLabel);
+                return false;
+            }
+        }
+
+        private void UpdateShareAuthStatusLabel()
+        {
+            if (lblShareAuthStatus == null) return;
+            if (shareAuthConfig == null || !shareAuthConfig.Enabled)
+            {
+                lblShareAuthStatus.Text = "Share auth  ·  disabled";
+                lblShareAuthStatus.ForeColor = AppTheme.TextMuted;
+            }
+            else if (shareConnected)
+            {
+                lblShareAuthStatus.Text = "Share auth  ·  connected as " + shareAuthConfig.EffectiveUserName;
+                lblShareAuthStatus.ForeColor = AppTheme.Success;
+            }
+            else if (string.IsNullOrWhiteSpace(shareAuthConfig.Username))
+            {
+                lblShareAuthStatus.Text = "Share auth  ·  set username/password";
+                lblShareAuthStatus.ForeColor = AppTheme.Warning;
+            }
+            else
+            {
+                lblShareAuthStatus.Text = "Share auth  ·  not connected";
+                lblShareAuthStatus.ForeColor = AppTheme.Danger;
+            }
+        }
+
+        private void ApplyShareAuthToUi()
+        {
+            Action apply = () =>
+            {
+                if (shareAuthConfig == null) return;
+                if (chkShareAuthEnabled != null) chkShareAuthEnabled.Checked = shareAuthConfig.Enabled;
+                if (txtShareRoot != null)
+                    txtShareRoot.Text = string.IsNullOrWhiteSpace(shareAuthConfig.ShareRoot)
+                        ? ShareAuthConfig.DefaultShareRoot
+                        : shareAuthConfig.ShareRoot;
+                if (txtShareDomain != null) txtShareDomain.Text = shareAuthConfig.Domain ?? string.Empty;
+                if (txtShareUsername != null) txtShareUsername.Text = shareAuthConfig.Username ?? string.Empty;
+                if (txtSharePassword != null) txtSharePassword.Text = shareAuthConfig.Password ?? string.Empty;
+                UpdateShareAuthStatusLabel();
+            };
+
+            if (IsHandleCreated && InvokeRequired) UI(apply);
+            else apply();
+        }
+
+        private bool TryReadShareAuthFromUi(out string error)
+        {
+            error = null;
+            if (shareAuthConfig == null) shareAuthConfig = new ShareAuthConfig();
+
+            shareAuthConfig.Enabled = chkShareAuthEnabled == null || chkShareAuthEnabled.Checked;
+            shareAuthConfig.ShareRoot = SafeGetText(txtShareRoot) ?? ShareAuthConfig.DefaultShareRoot;
+            shareAuthConfig.Domain = SafeGetText(txtShareDomain) ?? string.Empty;
+            shareAuthConfig.Username = SafeGetText(txtShareUsername) ?? string.Empty;
+            shareAuthConfig.Password = txtSharePassword != null ? (txtSharePassword.Text ?? string.Empty) : string.Empty;
+
+            if (shareAuthConfig.Enabled && string.IsNullOrWhiteSpace(shareAuthConfig.Username))
+            {
+                error = "Share username is required when auth is enabled.";
+                return false;
+            }
+
+            if (shareAuthConfig.Enabled)
+            {
+                string root = NetworkShareAuth.NormalizeShareRoot(shareAuthConfig.ShareRoot);
+                if (!root.StartsWith(@"\\", StringComparison.Ordinal))
+                {
+                    error = "Share root must be a UNC path like \\\\irn-st10\\payamconf.";
+                    return false;
+                }
+                shareAuthConfig.ShareRoot = root;
+            }
+
+            return true;
+        }
+
+        private void SaveShareAuthFromUi(bool connectAfterSave)
+        {
+            string error;
+            if (!TryReadShareAuthFromUi(out error))
+            {
+                LogMessage(error, Color.Red);
+                MessageBox.Show(error, "Share Auth", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                shareAuthConfig.Save();
+                LogMessage("Share auth config saved: " + ShareAuthConfig.DefaultConfigPath, Color.Green);
+                if (connectAfterSave)
+                    EnsureShareConnected(logResult: true);
+                else
+                    UI(UpdateShareAuthStatusLabel);
+            }
+            catch (Exception ex)
+            {
+                LogMessage("Failed to save share auth config: " + ex.Message, Color.Red);
+            }
+        }
+
+        // -------------------------
         // Process / directory helpers
         // -------------------------
         private bool IsProcessRunning(string processName)
@@ -1139,6 +1295,10 @@ namespace AutoClickUI
                 if (string.IsNullOrWhiteSpace(path))
                     return false;
 
+                // Authenticate UNC before probing (elevated admin sessions need this).
+                if (path.StartsWith(@"\\", StringComparison.Ordinal))
+                    EnsureShareConnected(logResult: false);
+
                 var task = Task.Run(() =>
                 {
                     try
@@ -1153,7 +1313,24 @@ namespace AutoClickUI
                     }
                 });
 
-                return task.Wait(TimeSpan.FromSeconds(1)) && task.Result;
+                bool ok = task.Wait(TimeSpan.FromSeconds(3)) && task.Result;
+                if (!ok && path.StartsWith(@"\\", StringComparison.Ordinal))
+                {
+                    // One retry after forced reconnect.
+                    EnsureShareConnected(logResult: true);
+                    var retry = Task.Run(() =>
+                    {
+                        try
+                        {
+                            if (!Directory.Exists(path)) return false;
+                            Directory.EnumerateFileSystemEntries(path).Take(1).ToList();
+                            return true;
+                        }
+                        catch { return false; }
+                    });
+                    ok = retry.Wait(TimeSpan.FromSeconds(3)) && retry.Result;
+                }
+                return ok;
             }
             catch
             {
@@ -1687,6 +1864,100 @@ namespace AutoClickUI
 
             panelSettings.Controls.Add(panelSettingsFolders);
             panelSettings.Controls.Add(panelSettingsPayam);
+
+            // Network share auth (elevated admin UNC login)
+            panelSettingsShare = new SurfacePanel
+            {
+                Location = new Point(0, 452),
+                Size = new Size(708, 250),
+                Title = "Network Share Auth (\\\\irn-st10\\payamconf)"
+            };
+
+            chkShareAuthEnabled = new CheckBox
+            {
+                Text = "Auto-login to config share (recommended when running as Administrator)",
+                Location = new Point(20, 28),
+                Size = new Size(660, 22),
+                Checked = true,
+                ForeColor = AppTheme.TextPrimary,
+                BackColor = Color.Transparent,
+                FlatStyle = FlatStyle.Flat
+            };
+
+            panelSettingsShare.Controls.Add(MakeCaption("SHARE ROOT (UNC)", 20, 58, 200));
+            txtShareRoot = new TextBox
+            {
+                Location = new Point(20, 78),
+                Size = new Size(660, 24),
+                Text = ShareAuthConfig.DefaultShareRoot
+            };
+            AppTheme.StyleTextBox(txtShareRoot);
+
+            panelSettingsShare.Controls.Add(MakeCaption("DOMAIN", 20, 112, 120));
+            txtShareDomain = new TextBox { Location = new Point(20, 132), Size = new Size(200, 24) };
+            AppTheme.StyleTextBox(txtShareDomain);
+
+            panelSettingsShare.Controls.Add(MakeCaption("USERNAME", 240, 112, 120));
+            txtShareUsername = new TextBox { Location = new Point(240, 132), Size = new Size(200, 24) };
+            AppTheme.StyleTextBox(txtShareUsername);
+
+            panelSettingsShare.Controls.Add(MakeCaption("PASSWORD", 460, 112, 120));
+            txtSharePassword = new TextBox
+            {
+                Location = new Point(460, 132),
+                Size = new Size(220, 24),
+                UseSystemPasswordChar = true
+            };
+            AppTheme.StyleTextBox(txtSharePassword);
+
+            lblShareAuthStatus = new Label
+            {
+                Location = new Point(20, 168),
+                Size = new Size(660, 18),
+                Text = "Share auth  ·  not configured"
+            };
+            AppTheme.StyleLabel(lblShareAuthStatus, muted: true);
+            lblShareAuthStatus.Font = AppTheme.CaptionFont;
+
+            var saveShare = new AccentButton { Text = "Save Share Auth", Location = new Point(20, 196), Size = new Size(200, 36) };
+            saveShare.SetSecondary();
+            saveShare.Click += (s, e) => SaveShareAuthFromUi(connectAfterSave: true);
+            btnSaveShareAuth = saveShare;
+
+            var connectShare = new AccentButton { Text = "Connect Now", Location = new Point(236, 196), Size = new Size(200, 36) };
+            connectShare.SetAccent(AppTheme.AccentDim, AppTheme.Accent);
+            connectShare.Click += (s, e) =>
+            {
+                string err;
+                if (!TryReadShareAuthFromUi(out err))
+                {
+                    LogMessage(err, Color.Red);
+                    return;
+                }
+                EnsureShareConnected(logResult: true);
+            };
+            btnConnectShare = connectShare;
+
+            var shareHint = new Label
+            {
+                Text = "Saved locally next to the exe (share_auth_config.txt). Avoids manual explorer login on each PC.",
+                Location = new Point(450, 204),
+                Size = new Size(230, 40)
+            };
+            AppTheme.StyleLabel(shareHint, muted: true);
+            shareHint.Font = AppTheme.CaptionFont;
+
+            panelSettingsShare.Controls.Add(chkShareAuthEnabled);
+            panelSettingsShare.Controls.Add(txtShareRoot);
+            panelSettingsShare.Controls.Add(txtShareDomain);
+            panelSettingsShare.Controls.Add(txtShareUsername);
+            panelSettingsShare.Controls.Add(txtSharePassword);
+            panelSettingsShare.Controls.Add(lblShareAuthStatus);
+            panelSettingsShare.Controls.Add(btnSaveShareAuth);
+            panelSettingsShare.Controls.Add(btnConnectShare);
+            panelSettingsShare.Controls.Add(shareHint);
+
+            panelSettings.Controls.Add(panelSettingsShare);
         }
 
         private void BuildLogsSection()
@@ -1732,13 +2003,21 @@ namespace AutoClickUI
                 string configPath = Path.Combine(configFolder, $"{machineName}_config.txt");
 
                 LogMessage($"Checking access to config folder: {configFolder}", Color.Blue);
+                if (!EnsureShareConnected(logResult: true) && shareAuthConfig != null && shareAuthConfig.Enabled)
+                {
+                    LogMessage("Share auth failed — config folder may still be unreachable.", Color.Orange);
+                }
                 if (!IsDirectoryAccessible(configFolder))
                 {
                     LogMessage($"Cannot access configuration folder: {configFolder}", Color.Red);
                     UI(() =>
                     {
-                        MessageBox.Show("Cannot access the configuration folder.", "Access Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        lblConfigStatus.Text = "Not Set";
+                        MessageBox.Show(
+                            "Cannot access the configuration folder.\n\nIf you run as Administrator, set Share Username/Password in Settings → Network Share Auth, then click Connect Now.",
+                            "Access Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                        lblConfigStatus.Text = "Config  ·  Not set";
                         statusLabel.Text = "Cannot access configuration folder";
                     });
                     return;
