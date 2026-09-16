@@ -176,7 +176,7 @@ namespace AutoClickUI
             Title = null;
             DoubleBuffered = true;
             BackColor = AppTheme.Surface;
-            Padding = new Padding(16, 36, 16, 14);
+            Padding = new Padding(12, 30, 12, 10);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
             UpdateStyles();
         }

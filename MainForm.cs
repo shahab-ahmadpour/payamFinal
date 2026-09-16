@@ -1345,57 +1345,80 @@ namespace AutoClickUI
         {
             this.Text = "Payam AutoClick — Precision Console";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
-            this.Size = new Size(820, 860);
-            this.MinimumSize = new Size(780, 800);
+            this.ClientSize = new Size(780, 720);
+            this.MinimumSize = new Size(800, 760);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.FormClosing += MainForm_FormClosing;
             AppTheme.StyleForm(this);
 
+            // Header
             panelHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 64,
+                Height = 58,
                 BackColor = AppTheme.Surface,
-                Padding = new Padding(18, 12, 18, 12)
+                Padding = new Padding(16, 0, 16, 0)
             };
 
+            var headerLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = AppTheme.Surface
+            };
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 310F));
+
+            var brandPanel = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface };
             lblBrand = new Label
             {
                 Text = "PAYAM AUTOCLICK",
-                Location = new Point(18, 10),
-                Size = new Size(280, 24),
+                Location = new Point(0, 10),
+                Size = new Size(320, 22),
                 Font = AppTheme.BrandFont,
                 ForeColor = AppTheme.TextPrimary,
-                BackColor = Color.Transparent
+                BackColor = AppTheme.Surface
             };
             var lblSubtitle = new Label
             {
                 Text = "Precision Console  ·  v2.4",
-                Location = new Point(20, 36),
-                Size = new Size(260, 18),
+                Location = new Point(2, 34),
+                Size = new Size(300, 16),
                 Font = AppTheme.CaptionFont,
                 ForeColor = AppTheme.TextMuted,
-                BackColor = Color.Transparent
+                BackColor = AppTheme.Surface
             };
+            brandPanel.Controls.Add(lblBrand);
+            brandPanel.Controls.Add(lblSubtitle);
 
-            btnNavConsole = new NavButton { Text = "Console", Location = new Point(490, 16), Size = new Size(90, 32), Active = true };
-            btnNavSettings = new NavButton { Text = "Settings", Location = new Point(588, 16), Size = new Size(90, 32) };
-            btnNavLogs = new NavButton { Text = "Logs", Location = new Point(686, 16), Size = new Size(90, 32) };
+            var navPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(0, 12, 0, 0)
+            };
+            btnNavConsole = new NavButton { Text = "Console", Size = new Size(92, 32), Active = true, Margin = new Padding(4, 0, 4, 0) };
+            btnNavSettings = new NavButton { Text = "Settings", Size = new Size(92, 32), Margin = new Padding(4, 0, 4, 0) };
+            btnNavLogs = new NavButton { Text = "Logs", Size = new Size(92, 32), Margin = new Padding(4, 0, 4, 0) };
             btnNavConsole.Click += (s, e) => ShowSection(0);
             btnNavSettings.Click += (s, e) => ShowSection(1);
             btnNavLogs.Click += (s, e) => ShowSection(2);
+            navPanel.Controls.Add(btnNavConsole);
+            navPanel.Controls.Add(btnNavSettings);
+            navPanel.Controls.Add(btnNavLogs);
 
-            panelHeader.Controls.Add(lblBrand);
-            panelHeader.Controls.Add(lblSubtitle);
-            panelHeader.Controls.Add(btnNavConsole);
-            panelHeader.Controls.Add(btnNavSettings);
-            panelHeader.Controls.Add(btnNavLogs);
+            headerLayout.Controls.Add(brandPanel, 0, 0);
+            headerLayout.Controls.Add(navPanel, 1, 0);
+            panelHeader.Controls.Add(headerLayout);
 
-            panelMain = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(18), Visible = true };
-            panelSettings = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(18), Visible = false, AutoScroll = true };
-            panelLogs = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(18), Visible = false };
+            panelMain = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = true };
+            panelSettings = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false, AutoScroll = true };
+            panelLogs = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false };
 
             BuildConsoleSection();
             BuildSettingsSection();
@@ -1406,6 +1429,7 @@ namespace AutoClickUI
             statusStrip.Items.Add(statusLabel);
             AppTheme.StyleStatusStrip(statusStrip, statusLabel);
 
+            // Z-order: fill panels first, then strip, then header
             this.Controls.Add(panelMain);
             this.Controls.Add(panelSettings);
             this.Controls.Add(panelLogs);
@@ -1436,43 +1460,75 @@ namespace AutoClickUI
             statusStrip.BringToFront();
         }
 
-        private Label MakeCaption(string text, int x, int y, int w = 120)
+        private Label MakeCaption(string text)
         {
             var lbl = new Label
             {
                 Text = text,
-                Location = new Point(x, y),
-                Size = new Size(w, 18),
-                TextAlign = ContentAlignment.MiddleLeft
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.BottomLeft,
+                Margin = new Padding(4, 2, 4, 0),
+                Height = 18
             };
             AppTheme.StyleLabel(lbl, muted: true);
             lbl.Font = AppTheme.CaptionFont;
             return lbl;
         }
 
+        private Label MakeCaption(string text, int x, int y, int w = 120)
+        {
+            var lbl = MakeCaption(text);
+            lbl.Dock = DockStyle.None;
+            lbl.Location = new Point(x, y);
+            lbl.Size = new Size(w, 18);
+            return lbl;
+        }
+
+        private Control WrapField(Control field)
+        {
+            field.Dock = DockStyle.Top;
+            field.Margin = new Padding(4, 2, 4, 8);
+            field.Height = 26;
+            return field;
+        }
+
         private void BuildConsoleSection()
         {
-            int contentW = 768;
-
+            // Stack: Hero (top) -> Status (top) -> Arm (fill remaining)
             panelHero = new SurfacePanel
             {
-                Location = new Point(0, 0),
-                Size = new Size(contentW, 200),
-                Title = "Live Payam Time"
+                Dock = DockStyle.Top,
+                Height = 168,
+                Title = "Live Payam Time",
+                Margin = new Padding(0, 0, 0, 10)
             };
+
+            var heroInner = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 4,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(4, 0, 4, 4)
+            };
+            heroInner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            heroInner.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48F));
+            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 68F));
+            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 10F));
 
             lblHeroClock = new HeroClockLabel
             {
                 Text = "--:--:--.---",
-                Location = new Point(18, 36),
-                Size = new Size(680, 72)
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4, 0, 4, 0)
             };
 
             lblSyncDot = new Label
             {
                 Text = "●",
-                Location = new Point(710, 52),
-                Size = new Size(36, 36),
+                Dock = DockStyle.Fill,
                 Font = new Font("Segoe UI", 16F, FontStyle.Bold),
                 ForeColor = AppTheme.TextMuted,
                 BackColor = AppTheme.Surface,
@@ -1482,130 +1538,148 @@ namespace AutoClickUI
             lblHeroMeta = new Label
             {
                 Text = "Source: starting…",
-                Location = new Point(22, 116),
-                Size = new Size(520, 20)
+                Dock = DockStyle.Fill,
+                Margin = new Padding(6, 0, 6, 0)
             };
             AppTheme.StyleLabel(lblHeroMeta, muted: true, mono: true);
 
             lblCountdown = new Label
             {
                 Text = "Remaining  —",
-                Location = new Point(22, 142),
-                Size = new Size(520, 22),
+                Dock = DockStyle.Fill,
                 Font = AppTheme.UiFontBold,
                 ForeColor = AppTheme.TextPrimary,
-                BackColor = AppTheme.Surface
+                BackColor = AppTheme.Surface,
+                Margin = new Padding(6, 0, 6, 0)
             };
 
             progressCountdown = new ThinProgressBar
             {
-                Location = new Point(22, 172),
-                Size = new Size(724, 8),
+                Dock = DockStyle.Fill,
+                Margin = new Padding(6, 2, 6, 0),
                 Progress = 0
             };
 
             lblLiveTime = new Label { Visible = false, Size = new Size(1, 1) };
 
-            panelHero.Controls.Add(lblHeroClock);
-            panelHero.Controls.Add(lblSyncDot);
-            panelHero.Controls.Add(lblHeroMeta);
-            panelHero.Controls.Add(lblCountdown);
-            panelHero.Controls.Add(progressCountdown);
+            heroInner.Controls.Add(lblHeroClock, 0, 0);
+            heroInner.Controls.Add(lblSyncDot, 1, 0);
+            heroInner.SetRowSpan(lblSyncDot, 1);
+            heroInner.Controls.Add(lblHeroMeta, 0, 1);
+            heroInner.SetColumnSpan(lblHeroMeta, 2);
+            heroInner.Controls.Add(lblCountdown, 0, 2);
+            heroInner.SetColumnSpan(lblCountdown, 2);
+            heroInner.Controls.Add(progressCountdown, 0, 3);
+            heroInner.SetColumnSpan(progressCountdown, 2);
+            panelHero.Controls.Add(heroInner);
             panelHero.Controls.Add(lblLiveTime);
 
             panelStatusChips = new SurfacePanel
             {
-                Location = new Point(0, 214),
-                Size = new Size(contentW, 96),
-                Title = "Status"
+                Dock = DockStyle.Top,
+                Height = 92,
+                Title = "Status",
+                Margin = new Padding(0, 0, 0, 10)
             };
 
-            lblTargetTime = new Label { Location = new Point(18, 36), Size = new Size(360, 20), Text = "Target  ·  Not set" };
-            lblProcessStatus = new Label { Location = new Point(390, 36), Size = new Size(350, 20), Text = "Process  ·  —" };
-            lblClickCount = new Label { Location = new Point(18, 62), Size = new Size(170, 20), Text = "Clicks  ·  1" };
-            lblConfigStatus = new Label { Location = new Point(200, 62), Size = new Size(240, 20), Text = "Config  ·  Not set" };
-            lblPayamStatus = new Label { Location = new Point(450, 62), Size = new Size(290, 20), Text = "Sync  ·  starting…" };
+            var statusGrid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount = 2,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(6, 0, 6, 4)
+            };
+            statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
+            statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            statusGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            statusGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
 
+            lblTargetTime = new Label { Text = "Target  ·  Not set", Dock = DockStyle.Fill, Margin = new Padding(4) };
+            lblProcessStatus = new Label { Text = "Process  ·  —", Dock = DockStyle.Fill, Margin = new Padding(4) };
+            lblClickCount = new Label { Text = "Clicks  ·  1", Dock = DockStyle.Fill, Margin = new Padding(4) };
+            lblConfigStatus = new Label { Text = "Config  ·  Not set", Dock = DockStyle.Fill, Margin = new Padding(4) };
+            lblPayamStatus = new Label { Text = "Sync  ·  starting…", Dock = DockStyle.Fill, Margin = new Padding(4) };
             AppTheme.StyleLabel(lblTargetTime, mono: true);
             AppTheme.StyleLabel(lblProcessStatus, muted: true);
             AppTheme.StyleLabel(lblClickCount, muted: true);
             AppTheme.StyleLabel(lblConfigStatus, muted: true);
             AppTheme.StyleLabel(lblPayamStatus, muted: true);
 
-            panelStatusChips.Controls.Add(lblTargetTime);
-            panelStatusChips.Controls.Add(lblProcessStatus);
-            panelStatusChips.Controls.Add(lblClickCount);
-            panelStatusChips.Controls.Add(lblConfigStatus);
-            panelStatusChips.Controls.Add(lblPayamStatus);
+            statusGrid.Controls.Add(lblTargetTime, 0, 0);
+            statusGrid.Controls.Add(lblClickCount, 1, 0);
+            statusGrid.Controls.Add(lblProcessStatus, 2, 0);
+            statusGrid.Controls.Add(lblConfigStatus, 0, 1);
+            statusGrid.Controls.Add(lblPayamStatus, 1, 1);
+            statusGrid.SetColumnSpan(lblPayamStatus, 2);
+            panelStatusChips.Controls.Add(statusGrid);
 
             panelArm = new SurfacePanel
             {
-                Location = new Point(0, 324),
-                Size = new Size(contentW, 400),
+                Dock = DockStyle.Fill,
                 Title = "Arm"
             };
 
-            int y1 = 36;
-            int y1c = 56;
-            int y2 = 100;
-            int y2c = 120;
-            int col1 = 18;
-            int col2 = 210;
-            int col3 = 402;
-            int col4 = 594;
-            int fieldH = 26;
-            int fieldW = 170;
-
-            panelArm.Controls.Add(MakeCaption("TARGET DATE", col1, y1));
-            dtpTargetDate = new DateTimePicker
+            var armRoot = new TableLayoutPanel
             {
-                Location = new Point(col1, y1c),
-                Size = new Size(fieldW, fieldH),
-                Format = DateTimePickerFormat.Short,
-                Value = DateTime.Today
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 5,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(12, 30, 12, 10)
             };
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));  // row1 fields
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));  // row2 fields
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));  // secondary buttons
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // spacer
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 78F));  // start/stop + hint
+
+            // Field row 1
+            var row1 = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 2,
+                BackColor = AppTheme.Surface
+            };
+            for (int i = 0; i < 4; i++)
+                row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            row1.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            row1.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+
+            dtpTargetDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Value = DateTime.Today, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleDateTimePicker(dtpTargetDate);
-
-            panelArm.Controls.Add(MakeCaption("TARGET TIME", col2, y1));
-            dtpTargetTime = new DateTimePicker
-            {
-                Location = new Point(col2, y1c),
-                Size = new Size(fieldW, fieldH),
-                Format = DateTimePickerFormat.Time,
-                ShowUpDown = true,
-                Value = DateTime.Now.AddMinutes(1)
-            };
+            dtpTargetTime = new DateTimePicker { Format = DateTimePickerFormat.Time, ShowUpDown = true, Value = DateTime.Now.AddMinutes(1), Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleDateTimePicker(dtpTargetTime);
-
-            panelArm.Controls.Add(MakeCaption("MILLISECONDS", col3, y1));
-            nudMilliseconds = new NumericUpDown
-            {
-                Location = new Point(col3, y1c),
-                Size = new Size(fieldW, fieldH),
-                Minimum = 0,
-                Maximum = 999,
-                Value = 0
-            };
+            nudMilliseconds = new NumericUpDown { Minimum = 0, Maximum = 999, Value = 0, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleNumeric(nudMilliseconds);
-
-            panelArm.Controls.Add(MakeCaption("PROCESS", col4, y1));
-            txtTargetProcess = new TextBox
-            {
-                Location = new Point(col4, y1c),
-                Size = new Size(fieldW, fieldH),
-                Text = "Payam"
-            };
+            txtTargetProcess = new TextBox { Text = "Payam", Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleTextBox(txtTargetProcess);
 
-            panelArm.Controls.Add(MakeCaption("CLICK COUNT", col1, y2));
-            nudClickCount = new NumericUpDown
+            row1.Controls.Add(MakeCaption("TARGET DATE"), 0, 0);
+            row1.Controls.Add(MakeCaption("TARGET TIME"), 1, 0);
+            row1.Controls.Add(MakeCaption("MILLISECONDS"), 2, 0);
+            row1.Controls.Add(MakeCaption("PROCESS"), 3, 0);
+            row1.Controls.Add(dtpTargetDate, 0, 1);
+            row1.Controls.Add(dtpTargetTime, 1, 1);
+            row1.Controls.Add(nudMilliseconds, 2, 1);
+            row1.Controls.Add(txtTargetProcess, 3, 1);
+
+            // Field row 2
+            var row2 = new TableLayoutPanel
             {
-                Location = new Point(col1, y2c),
-                Size = new Size(fieldW, fieldH),
-                Minimum = 1,
-                Maximum = 500,
-                Value = 1
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 2,
+                BackColor = AppTheme.Surface
             };
+            for (int i = 0; i < 4; i++)
+                row2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            row2.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            row2.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+
+            nudClickCount = new NumericUpDown { Minimum = 1, Maximum = 500, Value = 1, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleNumeric(nudClickCount);
             nudClickCount.ValueChanged += (s, e) =>
             {
@@ -1614,25 +1688,10 @@ namespace AutoClickUI
                 lblClickCount.Text = "Clicks  ·  " + ((int)nudClickCount.Value).ToString();
             };
 
-            panelArm.Controls.Add(MakeCaption("CLICK INTERVAL (MS)", col2, y2, 160));
-            nudClickInterval = new NumericUpDown
-            {
-                Location = new Point(col2, y2c),
-                Size = new Size(fieldW, fieldH),
-                Minimum = 0,
-                Maximum = 60000,
-                Value = 0,
-                Enabled = false
-            };
+            nudClickInterval = new NumericUpDown { Minimum = 0, Maximum = 60000, Value = 0, Enabled = false, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleNumeric(nudClickInterval);
 
-            panelArm.Controls.Add(MakeCaption("TIME SOURCE", col3, y2, 160));
-            cmbTimeSource = new ComboBox
-            {
-                Location = new Point(col3, y2c),
-                Size = new Size(fieldW + 20, fieldH),
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
+            cmbTimeSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
             AppTheme.StyleCombo(cmbTimeSource);
             cmbTimeSource.Items.Add("Payam API Time");
             cmbTimeSource.Items.Add("NTP");
@@ -1650,23 +1709,63 @@ namespace AutoClickUI
                 SetTimeSourceMode(mode, syncNow: true);
             };
 
-            var btnRead = new AccentButton { Text = "Read Config", Location = new Point(18, 172), Size = new Size(360, 40) };
+            row2.Controls.Add(MakeCaption("CLICK COUNT"), 0, 0);
+            row2.Controls.Add(MakeCaption("CLICK INTERVAL (MS)"), 1, 0);
+            row2.Controls.Add(MakeCaption("TIME SOURCE"), 2, 0);
+            row2.Controls.Add(new Label { BackColor = AppTheme.Surface, Dock = DockStyle.Fill }, 3, 0);
+            row2.Controls.Add(nudClickCount, 0, 1);
+            row2.Controls.Add(nudClickInterval, 1, 1);
+            row2.Controls.Add(cmbTimeSource, 2, 1);
+            row2.SetColumnSpan(cmbTimeSource, 2);
+
+            // Secondary actions
+            var rowActions = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(0, 4, 0, 0)
+            };
+            rowActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            rowActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+
+            var btnRead = new AccentButton { Text = "Read Config", Dock = DockStyle.Fill, Margin = new Padding(4, 4, 8, 4) };
             btnRead.SetSecondary();
             btnRead.Click += BtnReadConfig_Click;
             btnReadConfig = btnRead;
 
-            var btnManual = new AccentButton { Text = "Use Manual Settings", Location = new Point(390, 172), Size = new Size(360, 40) };
+            var btnManual = new AccentButton { Text = "Use Manual Settings", Dock = DockStyle.Fill, Margin = new Padding(8, 4, 4, 4) };
             btnManual.SetSecondary();
             btnManual.Click += BtnManualConfig_Click;
             btnManualConfig = btnManual;
 
-            var start = new AccentButton { Text = "START", Location = new Point(18, 232), Size = new Size(500, 48) };
+            rowActions.Controls.Add(btnReadConfig, 0, 0);
+            rowActions.Controls.Add(btnManualConfig, 1, 0);
+
+            // Spacer
+            var spacer = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface };
+
+            // Bottom: equal START/STOP + hint
+            var bottom = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                BackColor = AppTheme.Surface
+            };
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+            bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+
+            var start = new AccentButton { Text = "START", Dock = DockStyle.Fill, Margin = new Padding(4, 2, 8, 2) };
             start.SetAccent(AppTheme.Start, AppTheme.StartHover);
             start.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             start.Click += BtnStart_Click;
             btnStart = start;
 
-            var stop = new AccentButton { Text = "STOP", Location = new Point(534, 232), Size = new Size(216, 48), Enabled = false };
+            var stop = new AccentButton { Text = "STOP", Dock = DockStyle.Fill, Margin = new Padding(8, 2, 4, 2), Enabled = false };
             stop.SetAccent(AppTheme.StopEnabled, AppTheme.Danger);
             stop.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             stop.Click += BtnStop_Click;
@@ -1675,28 +1774,33 @@ namespace AutoClickUI
             var hint = new Label
             {
                 Text = "F12 fires on Payam clock + safety margin — never early.",
-                Location = new Point(18, 300),
-                Size = new Size(720, 20)
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4, 4, 4, 0),
+                TextAlign = ContentAlignment.MiddleLeft
             };
             AppTheme.StyleLabel(hint, muted: true);
             hint.Font = AppTheme.CaptionFont;
 
-            panelArm.Controls.Add(dtpTargetDate);
-            panelArm.Controls.Add(dtpTargetTime);
-            panelArm.Controls.Add(nudMilliseconds);
-            panelArm.Controls.Add(txtTargetProcess);
-            panelArm.Controls.Add(nudClickCount);
-            panelArm.Controls.Add(nudClickInterval);
-            panelArm.Controls.Add(cmbTimeSource);
-            panelArm.Controls.Add(btnReadConfig);
-            panelArm.Controls.Add(btnManualConfig);
-            panelArm.Controls.Add(btnStart);
-            panelArm.Controls.Add(btnStop);
-            panelArm.Controls.Add(hint);
+            bottom.Controls.Add(btnStart, 0, 0);
+            bottom.Controls.Add(btnStop, 1, 0);
+            bottom.Controls.Add(hint, 0, 1);
+            bottom.SetColumnSpan(hint, 2);
 
-            panelMain.Controls.Add(panelHero);
-            panelMain.Controls.Add(panelStatusChips);
+            armRoot.Controls.Add(row1, 0, 0);
+            armRoot.Controls.Add(row2, 0, 1);
+            armRoot.Controls.Add(rowActions, 0, 2);
+            armRoot.Controls.Add(spacer, 0, 3);
+            armRoot.Controls.Add(bottom, 0, 4);
+            panelArm.Controls.Add(armRoot);
+
+            // Dock order: Fill first, then Top panels (last Top = visually highest)
+            var gap1 = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = AppTheme.Bg };
+            var gap2 = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = AppTheme.Bg };
             panelMain.Controls.Add(panelArm);
+            panelMain.Controls.Add(gap2);
+            panelMain.Controls.Add(panelStatusChips);
+            panelMain.Controls.Add(gap1);
+            panelMain.Controls.Add(panelHero);
         }
 
         private void BuildSettingsSection()
