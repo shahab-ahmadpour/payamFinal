@@ -49,12 +49,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup>
-    <GenerateManifests>true</GenerateManifests>
-    <!-- Signing requires a local PFX; without it publish/build must still succeed. -->
+    <!-- ClickOnce signing disabled: TemporaryKey.pfx was removed from repo / cert store mismatch. -->
+    <GenerateManifests>false</GenerateManifests>
     <SignManifests>false</SignManifests>
-    <SignManifests Condition="Exists('AutoClickUI_TemporaryKey.pfx')">true</SignManifests>
-    <ManifestKeyFile Condition="Exists('AutoClickUI_TemporaryKey.pfx')">AutoClickUI_TemporaryKey.pfx</ManifestKeyFile>
-    <ManifestCertificateThumbprint Condition="Exists('AutoClickUI_TemporaryKey.pfx')">ECCC024788977F85071D78E82E627F0D3E471E11</ManifestCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>icon-2.ico</ApplicationIcon>
