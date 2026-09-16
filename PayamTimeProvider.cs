@@ -112,7 +112,9 @@ namespace AutoClickUI
                 if (!_hasPhaseLock && !_hasAnyReading)
                     return DateTime.Now;
 
-                return _basePayamLocal.AddMilliseconds(_stopwatch.Elapsed.TotalMilliseconds);
+                // ClockBiasMs pulls our clock behind Payam so Live Time / F12 never lead the Payam UI.
+                int bias = Math.Max(0, _config.ClockBiasMs);
+                return _basePayamLocal.AddMilliseconds(_stopwatch.Elapsed.TotalMilliseconds - bias);
             }
         }
 
@@ -144,7 +146,12 @@ namespace AutoClickUI
                     lock (_gate) cfg = CloneConfig(_config);
                     sleepMs = Math.Max(10, cfg.PollIntervalMs);
 
-                    string json = FetchPeriodicDataRaw(cfg);
+                    string json;
+                    var rttSw = Stopwatch.StartNew();
+                    json = FetchPeriodicDataRaw(cfg);
+                    rttSw.Stop();
+                    int rttMs = (int)Math.Max(0, Math.Min(250, rttSw.ElapsedMilliseconds));
+
                     string nowText;
                     if (!TryExtractNowTime(json, out nowText))
                     {
@@ -156,7 +163,7 @@ namespace AutoClickUI
 
                     _consecutiveFailures = 0;
                     _lastSuccessUtc = DateTime.UtcNow;
-                    ApplyNowTimeReading(nowText);
+                    ApplyNowTimeReading(nowText, rttMs);
                 }
                 catch (Exception ex)
                 {
@@ -174,9 +181,9 @@ namespace AutoClickUI
             Log("Payam time sync loop stopped.", false);
         }
 
-        private void ApplyNowTimeReading(string nowText)
+        private void ApplyNowTimeReading(string nowText, int rttMs)
         {
-            // First reading: provisional lock at second boundary (.000) until edge arrives.
+            // First reading: provisional lock at second boundary until edge arrives.
             if (!_hasAnyReading)
             {
                 DateTime provisional = CombineWithToday(nowText);
@@ -205,6 +212,7 @@ namespace AutoClickUI
 
                 lock (_gate)
                 {
+                    // Lock at the second edge; ClockBiasMs in GetCurrentTime keeps us behind Payam UI.
                     _basePayamLocal = edge;
                     _stopwatch.Restart();
                     _lastNowTimeText = nowText;
@@ -213,7 +221,8 @@ namespace AutoClickUI
                 }
 
                 SetStatus("Payam synced (phase-locked @" + nowText + ")");
-                Log("Payam phase lock at " + edge.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture), false);
+                Log("Payam phase lock at " + edge.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)
+                    + " (rtt≈" + rttMs + "ms, bias=" + _config.ClockBiasMs + "ms)", false);
             }
         }
 
@@ -345,6 +354,7 @@ namespace AutoClickUI
                 YearCode = src.YearCode,
                 ContentTypeOptions = src.ContentTypeOptions,
                 SafetyMarginMs = src.SafetyMarginMs,
+                ClockBiasMs = src.ClockBiasMs,
                 PollIntervalMs = src.PollIntervalMs
             };
         }

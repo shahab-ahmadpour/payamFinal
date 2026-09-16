@@ -15,6 +15,8 @@ namespace AutoClickUI
         public const string DefaultContentTypeOptions = "54I_s";
         public const int DefaultSafetyMarginMs = 10;
         public const int DefaultPollIntervalMs = 40;
+        /// <summary>Subtract from live Payam clock so AutoClick never leads the Payam UI.</summary>
+        public const int DefaultClockBiasMs = 60;
 
         public string ApiUrl { get; set; } = DefaultApiUrl;
         public string YearCode { get; set; } = DefaultYearCode;
@@ -24,6 +26,12 @@ namespace AutoClickUI
         public int SafetyMarginMs { get; set; } = DefaultSafetyMarginMs;
 
         public int PollIntervalMs { get; set; } = DefaultPollIntervalMs;
+
+        /// <summary>
+        /// Milliseconds to hold our clock behind the raw phase-lock
+        /// (fixes AutoClick appearing ahead of the Payam window).
+        /// </summary>
+        public int ClockBiasMs { get; set; } = DefaultClockBiasMs;
 
         public static string DefaultConfigPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "payam_time_config.txt");
@@ -62,13 +70,22 @@ namespace AutoClickUI
                         cfg.ContentTypeOptions = value ?? DefaultContentTypeOptions;
                     else if (key.Equals("SafetyMarginMs", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int margin))
+                        int margin;
+                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out margin))
                             cfg.SafetyMarginMs = Clamp(margin, 0, 500);
                     }
                     else if (key.Equals("PollIntervalMs", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int poll))
+                        int poll;
+                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out poll))
                             cfg.PollIntervalMs = Clamp(poll, 10, 1000);
+                    }
+                    else if (key.Equals("ClockBiasMs", StringComparison.OrdinalIgnoreCase)
+                             || key.Equals("SyncLagMs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int bias;
+                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out bias))
+                            cfg.ClockBiasMs = Clamp(bias, 0, 300);
                     }
                 }
             }
@@ -93,6 +110,7 @@ namespace AutoClickUI
             sb.AppendLine("YearCode=" + (YearCode ?? DefaultYearCode));
             sb.AppendLine("X-Content-Type-Options=" + (ContentTypeOptions ?? DefaultContentTypeOptions));
             sb.AppendLine("SafetyMarginMs=" + Clamp(SafetyMarginMs, 0, 500).ToString(CultureInfo.InvariantCulture));
+            sb.AppendLine("ClockBiasMs=" + Clamp(ClockBiasMs, 0, 300).ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("PollIntervalMs=" + Clamp(PollIntervalMs, 10, 1000).ToString(CultureInfo.InvariantCulture));
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
         }
@@ -104,6 +122,7 @@ namespace AutoClickUI
             YearCode = other.YearCode;
             ContentTypeOptions = other.ContentTypeOptions;
             SafetyMarginMs = other.SafetyMarginMs;
+            ClockBiasMs = other.ClockBiasMs;
             PollIntervalMs = other.PollIntervalMs;
         }
 

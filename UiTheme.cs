@@ -1,62 +1,37 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace AutoClickUI
 {
-    /// <summary>Precision Console dark theme tokens and WinForms styling helpers.</summary>
+    /// <summary>Clean light theme — simple, readable, operator-friendly.</summary>
     internal static class AppTheme
     {
-        public static readonly Color Bg = Color.FromArgb(15, 20, 25);
-        public static readonly Color Surface = Color.FromArgb(26, 35, 50);
-        public static readonly Color SurfaceAlt = Color.FromArgb(32, 44, 62);
-        public static readonly Color Border = Color.FromArgb(58, 78, 105);
-        public static readonly Color TextPrimary = Color.FromArgb(232, 240, 248);
-        public static readonly Color TextMuted = Color.FromArgb(148, 163, 184);
-        public static readonly Color Accent = Color.FromArgb(45, 212, 191);
-        public static readonly Color AccentDim = Color.FromArgb(20, 120, 110);
-        public static readonly Color Success = Color.FromArgb(52, 211, 153);
-        public static readonly Color Warning = Color.FromArgb(251, 191, 36);
-        public static readonly Color Danger = Color.FromArgb(248, 113, 113);
-        public static readonly Color Start = Color.FromArgb(16, 185, 129);
-        public static readonly Color StartHover = Color.FromArgb(5, 150, 105);
-        public static readonly Color Stop = Color.FromArgb(127, 29, 29);
-        public static readonly Color StopEnabled = Color.FromArgb(185, 28, 28);
-        public static readonly Color LogInfo = Color.FromArgb(125, 211, 252);
-        public static readonly Color LogOk = Color.FromArgb(110, 231, 183);
-        public static readonly Color LogWarn = Color.FromArgb(253, 224, 71);
-        public static readonly Color LogErr = Color.FromArgb(252, 165, 165);
+        public static readonly Color Bg = Color.FromArgb(243, 244, 246);
+        public static readonly Color Surface = Color.White;
+        public static readonly Color SurfaceAlt = Color.FromArgb(249, 250, 251);
+        public static readonly Color Border = Color.FromArgb(209, 213, 219);
+        public static readonly Color TextPrimary = Color.FromArgb(17, 24, 39);
+        public static readonly Color TextMuted = Color.FromArgb(107, 114, 128);
+        public static readonly Color Accent = Color.FromArgb(13, 148, 136);
+        public static readonly Color AccentDim = Color.FromArgb(15, 118, 110);
+        public static readonly Color Success = Color.FromArgb(5, 150, 105);
+        public static readonly Color Warning = Color.FromArgb(217, 119, 6);
+        public static readonly Color Danger = Color.FromArgb(220, 38, 38);
+        public static readonly Color Start = Color.FromArgb(5, 150, 105);
+        public static readonly Color StartHover = Color.FromArgb(4, 120, 87);
+        public static readonly Color StopEnabled = Color.FromArgb(220, 38, 38);
+        public static readonly Color LogInfo = Color.FromArgb(37, 99, 235);
+        public static readonly Color LogOk = Color.FromArgb(5, 150, 105);
+        public static readonly Color LogWarn = Color.FromArgb(180, 83, 9);
+        public static readonly Color LogErr = Color.FromArgb(185, 28, 28);
 
-        public static Font BrandFont
-        {
-            get { return new Font("Segoe UI Semibold", 13F, FontStyle.Bold); }
-        }
-
-        public static Font HeroFont
-        {
-            get { return new Font("Consolas", 42F, FontStyle.Bold); }
-        }
-
-        public static Font MonoFont
-        {
-            get { return new Font("Consolas", 10.5F, FontStyle.Regular); }
-        }
-
-        public static Font UiFont
-        {
-            get { return new Font("Segoe UI", 9.25F, FontStyle.Regular); }
-        }
-
-        public static Font UiFontBold
-        {
-            get { return new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold); }
-        }
-
-        public static Font CaptionFont
-        {
-            get { return new Font("Segoe UI", 8F, FontStyle.Regular); }
-        }
+        public static Font BrandFont { get { return new Font("Segoe UI Semibold", 13F, FontStyle.Bold); } }
+        public static Font HeroFont { get { return new Font("Consolas", 40F, FontStyle.Bold); } }
+        public static Font MonoFont { get { return new Font("Consolas", 10.5F, FontStyle.Regular); } }
+        public static Font UiFont { get { return new Font("Segoe UI", 9.25F, FontStyle.Regular); } }
+        public static Font UiFontBold { get { return new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold); } }
+        public static Font CaptionFont { get { return new Font("Segoe UI", 8.25F, FontStyle.Regular); } }
 
         public static void StyleForm(Form form)
         {
@@ -67,7 +42,6 @@ namespace AutoClickUI
 
         public static void StyleLabel(Label lbl, bool muted = false, bool mono = false)
         {
-            // Opaque surface color — Transparent labels clip/corrupt large glyphs on custom panels.
             lbl.BackColor = Surface;
             lbl.ForeColor = muted ? TextMuted : TextPrimary;
             lbl.Font = mono ? MonoFont : UiFont;
@@ -76,7 +50,7 @@ namespace AutoClickUI
         public static void StyleTextBox(TextBox tb)
         {
             tb.BorderStyle = BorderStyle.FixedSingle;
-            tb.BackColor = SurfaceAlt;
+            tb.BackColor = Color.White;
             tb.ForeColor = TextPrimary;
             tb.Font = UiFont;
         }
@@ -84,31 +58,30 @@ namespace AutoClickUI
         public static void StyleNumeric(NumericUpDown nud)
         {
             nud.BorderStyle = BorderStyle.FixedSingle;
-            nud.BackColor = SurfaceAlt;
+            nud.BackColor = Color.White;
             nud.ForeColor = TextPrimary;
             nud.Font = UiFont;
         }
 
         public static void StyleCombo(ComboBox cmb)
         {
-            cmb.FlatStyle = FlatStyle.Flat;
-            cmb.BackColor = SurfaceAlt;
+            cmb.FlatStyle = FlatStyle.Standard;
+            cmb.BackColor = Color.White;
             cmb.ForeColor = TextPrimary;
             cmb.Font = UiFont;
         }
 
         public static void StyleDateTimePicker(DateTimePicker dtp)
         {
-            // Keep system chrome — custom calendar colors break the dropdown button layout.
             dtp.Font = UiFont;
             dtp.CalendarFont = UiFont;
         }
 
         public static void StyleRichText(RichTextBox rtb)
         {
-            rtb.BackColor = Surface;
+            rtb.BackColor = Color.White;
             rtb.ForeColor = TextPrimary;
-            rtb.BorderStyle = BorderStyle.None;
+            rtb.BorderStyle = BorderStyle.FixedSingle;
             rtb.Font = new Font("Consolas", 9.25F);
         }
 
@@ -126,14 +99,10 @@ namespace AutoClickUI
         {
             if (!requested.HasValue) return TextPrimary;
             Color c = requested.Value;
-            if (c.ToArgb() == Color.Green.ToArgb() || c.ToArgb() == Color.DarkGreen.ToArgb())
-                return LogOk;
-            if (c.ToArgb() == Color.Red.ToArgb() || c.ToArgb() == Color.DarkRed.ToArgb())
-                return LogErr;
-            if (c.ToArgb() == Color.Orange.ToArgb() || c.ToArgb() == Color.DarkOrange.ToArgb())
-                return LogWarn;
-            if (c.ToArgb() == Color.Blue.ToArgb() || c.ToArgb() == Color.DarkBlue.ToArgb())
-                return LogInfo;
+            if (c.ToArgb() == Color.Green.ToArgb() || c.ToArgb() == Color.DarkGreen.ToArgb()) return LogOk;
+            if (c.ToArgb() == Color.Red.ToArgb() || c.ToArgb() == Color.DarkRed.ToArgb()) return LogErr;
+            if (c.ToArgb() == Color.Orange.ToArgb() || c.ToArgb() == Color.DarkOrange.ToArgb()) return LogWarn;
+            if (c.ToArgb() == Color.Blue.ToArgb() || c.ToArgb() == Color.DarkBlue.ToArgb()) return LogInfo;
             return c;
         }
 
@@ -160,15 +129,10 @@ namespace AutoClickUI
         }
     }
 
-    /// <summary>Solid surface card — paints background via BackColor so child controls never clip.</summary>
     internal sealed class SurfacePanel : Panel
     {
         public Color BorderColor { get; set; }
         public string Title { get; set; }
-        public int ContentTop
-        {
-            get { return string.IsNullOrEmpty(Title) ? 12 : 34; }
-        }
 
         public SurfacePanel()
         {
@@ -176,7 +140,7 @@ namespace AutoClickUI
             Title = null;
             DoubleBuffered = true;
             BackColor = AppTheme.Surface;
-            Padding = new Padding(12, 30, 12, 10);
+            Padding = new Padding(14, 28, 14, 12);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
             UpdateStyles();
         }
@@ -190,22 +154,18 @@ namespace AutoClickUI
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-            Rectangle rect = new Rectangle(0, 0, Width - 1, Height - 1);
             using (var pen = new Pen(BorderColor))
-                e.Graphics.DrawRectangle(pen, rect);
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
 
             if (!string.IsNullOrEmpty(Title))
             {
                 using (var font = AppTheme.CaptionFont)
                 using (var brush = new SolidBrush(AppTheme.TextMuted))
-                    e.Graphics.DrawString(Title.ToUpperInvariant(), font, brush, 16, 10);
+                    e.Graphics.DrawString(Title, font, brush, 14, 8);
             }
         }
     }
 
-    /// <summary>Large monospace clock drawn with GDI+ (avoids WinForms Label glyph clipping).</summary>
     internal sealed class HeroClockLabel : Control
     {
         private string _value = "--:--:--.---";
@@ -236,8 +196,6 @@ namespace AutoClickUI
         {
             e.Graphics.Clear(BackColor);
             e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
             using (var brush = new SolidBrush(ForeColor))
             using (var format = new StringFormat
             {
@@ -246,14 +204,11 @@ namespace AutoClickUI
                 FormatFlags = StringFormatFlags.NoWrap
             })
             {
-                // Inset so glyph overhang never clips.
-                RectangleF layout = new RectangleF(4, 4, Width - 8, Height - 8);
-                e.Graphics.DrawString(_value, Font, brush, layout, format);
+                e.Graphics.DrawString(_value, Font, brush, new RectangleF(2, 2, Width - 4, Height - 4), format);
             }
         }
     }
 
-    /// <summary>Flat accent / action button with hover.</summary>
     internal sealed class AccentButton : Button
     {
         private Color _baseColor;
@@ -286,7 +241,7 @@ namespace AutoClickUI
 
         public void SetSecondary()
         {
-            SetAccent(AppTheme.SurfaceAlt, AppTheme.Border);
+            SetAccent(AppTheme.SurfaceAlt, Color.FromArgb(229, 231, 235));
             _foreNormal = AppTheme.TextPrimary;
             ForeColor = _foreNormal;
             FlatAppearance.BorderSize = 1;
@@ -303,26 +258,25 @@ namespace AutoClickUI
         protected override void OnMouseLeave(System.EventArgs e)
         {
             _hover = false;
-            BackColor = Enabled ? _baseColor : AppTheme.Border;
+            BackColor = Enabled ? _baseColor : Color.FromArgb(229, 231, 235);
             base.OnMouseLeave(e);
         }
 
         protected override void OnEnabledChanged(System.EventArgs e)
         {
-            BackColor = Enabled ? (_hover ? _hoverColor : _baseColor) : AppTheme.Border;
+            BackColor = Enabled ? (_hover ? _hoverColor : _baseColor) : Color.FromArgb(229, 231, 235);
             ForeColor = Enabled ? _foreNormal : AppTheme.TextMuted;
             base.OnEnabledChanged(e);
         }
     }
 
-    /// <summary>Thin horizontal progress bar for countdown.</summary>
     internal sealed class ThinProgressBar : Control
     {
         private double _value;
 
         public ThinProgressBar()
         {
-            Height = 8;
+            Height = 6;
             DoubleBuffered = true;
             BackColor = AppTheme.Surface;
             _value = 0;
@@ -345,10 +299,8 @@ namespace AutoClickUI
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var bg = new SolidBrush(AppTheme.SurfaceAlt))
+            using (var bg = new SolidBrush(Color.FromArgb(229, 231, 235)))
                 e.Graphics.FillRectangle(bg, 0, 0, Width, Height);
-
             int w = (int)System.Math.Round(Width * _value);
             if (w > 0)
             {
@@ -358,7 +310,6 @@ namespace AutoClickUI
         }
     }
 
-    /// <summary>Top navigation pill button.</summary>
     internal sealed class NavButton : Button
     {
         private bool _active;
@@ -369,7 +320,7 @@ namespace AutoClickUI
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
             Font = AppTheme.UiFontBold;
-            Height = 32;
+            Height = 30;
             ForeColor = AppTheme.TextMuted;
             BackColor = AppTheme.Surface;
             FlatAppearance.MouseOverBackColor = AppTheme.SurfaceAlt;
@@ -384,10 +335,10 @@ namespace AutoClickUI
                 _active = value;
                 if (_active)
                 {
-                    BackColor = AppTheme.SurfaceAlt;
-                    ForeColor = AppTheme.Accent;
+                    BackColor = Color.FromArgb(204, 251, 241);
+                    ForeColor = AppTheme.AccentDim;
                     FlatAppearance.BorderSize = 1;
-                    FlatAppearance.BorderColor = AppTheme.AccentDim;
+                    FlatAppearance.BorderColor = AppTheme.Accent;
                 }
                 else
                 {

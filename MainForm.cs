@@ -160,6 +160,7 @@ namespace AutoClickUI
         private NumericUpDown nudClickCount;
         private NumericUpDown nudClickInterval;
         private NumericUpDown nudSafetyMargin;
+        private NumericUpDown nudClockBias;
 
         private DateTimePicker dtpTargetDate;
         private DateTimePicker dtpTargetTime;
@@ -385,6 +386,11 @@ namespace AutoClickUI
                 int margin = Math.Max(0, Math.Min(500, payamConfig.SafetyMarginMs));
                 nudSafetyMargin.Value = margin;
             }
+            if (nudClockBias != null)
+            {
+                int bias = Math.Max(0, Math.Min(300, payamConfig.ClockBiasMs));
+                nudClockBias.Value = bias;
+            }
         }
 
         private bool TryReadPayamConfigFromUi(out string error)
@@ -412,6 +418,8 @@ namespace AutoClickUI
             payamConfig.YearCode = yearCode ?? string.Empty;
             payamConfig.ContentTypeOptions = token ?? string.Empty;
             payamConfig.SafetyMarginMs = (int)nudSafetyMargin.Value;
+            if (nudClockBias != null)
+                payamConfig.ClockBiasMs = (int)nudClockBias.Value;
             return true;
         }
 
@@ -485,6 +493,7 @@ namespace AutoClickUI
             if (txtPayamYearCode != null) txtPayamYearCode.Enabled = payam;
             if (txtPayamContentTypeOptions != null) txtPayamContentTypeOptions.Enabled = payam;
             if (nudSafetyMargin != null) nudSafetyMargin.Enabled = payam;
+            if (nudClockBias != null) nudClockBias.Enabled = payam;
             if (btnSyncPayam != null) btnSyncPayam.Enabled = payam;
             if (btnSavePayamConfig != null) btnSavePayamConfig.Enabled = payam;
         }
@@ -1343,7 +1352,7 @@ namespace AutoClickUI
         // -------------------------
         private void InitializeComponent()
         {
-            this.Text = "Payam AutoClick — Precision Console";
+            this.Text = "Payam AutoClick";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
             this.ClientSize = new Size(780, 720);
             this.MinimumSize = new Size(800, 760);
@@ -1384,7 +1393,7 @@ namespace AutoClickUI
             };
             var lblSubtitle = new Label
             {
-                Text = "Precision Console  ·  v2.4",
+                Text = "Simple · reliable · v2.5",
                 Location = new Point(2, 34),
                 Size = new Size(300, 16),
                 Font = AppTheme.CaptionFont,
@@ -1499,7 +1508,7 @@ namespace AutoClickUI
             {
                 Dock = DockStyle.Top,
                 Height = 168,
-                Title = "Live Payam Time",
+                Title = "Live time (Payam)",
                 Margin = new Padding(0, 0, 0, 10)
             };
 
@@ -1618,7 +1627,7 @@ namespace AutoClickUI
             panelArm = new SurfacePanel
             {
                 Dock = DockStyle.Fill,
-                Title = "Arm"
+                Title = "Setup"
             };
 
             var armRoot = new TableLayoutPanel
@@ -1627,7 +1636,7 @@ namespace AutoClickUI
                 ColumnCount = 1,
                 RowCount = 5,
                 BackColor = AppTheme.Surface,
-                Padding = new Padding(12, 30, 12, 10)
+                Padding = new Padding(4, 0, 4, 4)
             };
             armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));  // row1 fields
             armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));  // row2 fields
@@ -1894,7 +1903,7 @@ namespace AutoClickUI
             panelSettingsPayam = new SurfacePanel
             {
                 Location = new Point(0, 206),
-                Size = new Size(708, 230),
+                Size = new Size(768, 280),
                 Title = "Payam API Time"
             };
 
@@ -1902,7 +1911,7 @@ namespace AutoClickUI
             txtPayamApiUrl = new TextBox
             {
                 Location = new Point(20, 48),
-                Size = new Size(660, 24),
+                Size = new Size(720, 24),
                 Text = PayamTimeConfig.DefaultApiUrl
             };
             AppTheme.StyleTextBox(txtPayamApiUrl);
@@ -1936,22 +1945,33 @@ namespace AutoClickUI
             };
             AppTheme.StyleNumeric(nudSafetyMargin);
 
+            panelSettingsPayam.Controls.Add(MakeCaption("CLOCK BIAS (MS)", 20, 138, 180));
+            nudClockBias = new NumericUpDown
+            {
+                Location = new Point(20, 158),
+                Size = new Size(120, 24),
+                Minimum = 0,
+                Maximum = 300,
+                Value = PayamTimeConfig.DefaultClockBiasMs
+            };
+            AppTheme.StyleNumeric(nudClockBias);
+
             var marginHint = new Label
             {
-                Text = "Positive delay after Payam target — F12 never fires early (0…50 typical).",
-                Location = new Point(20, 138),
-                Size = new Size(660, 18)
+                Text = "Safety = wait after target.  Clock Bias = hold Live Time behind Payam UI if app looks ahead (try 40–100).",
+                Location = new Point(160, 160),
+                Size = new Size(580, 22)
             };
             AppTheme.StyleLabel(marginHint, muted: true);
             marginHint.Font = AppTheme.CaptionFont;
 
-            var savePayam = new AccentButton { Text = "Save Payam Config", Location = new Point(20, 168), Size = new Size(220, 40) };
+            var savePayam = new AccentButton { Text = "Save Payam Config", Location = new Point(20, 210), Size = new Size(220, 40) };
             savePayam.SetSecondary();
             savePayam.Click += (s, e) => SavePayamConfigFromUi();
             btnSavePayamConfig = savePayam;
 
-            var syncPayam = new AccentButton { Text = "Apply / Resync Payam", Location = new Point(256, 168), Size = new Size(220, 40) };
-            syncPayam.SetAccent(AppTheme.AccentDim, AppTheme.Accent);
+            var syncPayam = new AccentButton { Text = "Apply / Resync Payam", Location = new Point(256, 210), Size = new Size(220, 40) };
+            syncPayam.SetAccent(AppTheme.Accent, AppTheme.AccentDim);
             syncPayam.Click += (s, e) =>
             {
                 SavePayamConfigFromUi();
@@ -1967,6 +1987,7 @@ namespace AutoClickUI
             panelSettingsPayam.Controls.Add(txtPayamYearCode);
             panelSettingsPayam.Controls.Add(txtPayamContentTypeOptions);
             panelSettingsPayam.Controls.Add(nudSafetyMargin);
+            panelSettingsPayam.Controls.Add(nudClockBias);
             panelSettingsPayam.Controls.Add(marginHint);
             panelSettingsPayam.Controls.Add(btnSavePayamConfig);
             panelSettingsPayam.Controls.Add(btnSyncPayam);
