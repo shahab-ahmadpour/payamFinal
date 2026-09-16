@@ -84,6 +84,7 @@
     <Compile Include="PayamTimeConfig.cs" />
     <Compile Include="PayamTimeProvider.cs" />
     <Compile Include="TimeSourceMode.cs" />
+    <Compile Include="UiTheme.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Content Include="icon-2.ico" />

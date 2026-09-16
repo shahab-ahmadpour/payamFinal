@@ -61,6 +61,11 @@ namespace AutoClickUI
             get { return _lastSuccessUtc; }
         }
 
+        public DateTime LastPhaseLockUtc
+        {
+            get { return _lastPhaseLockUtc; }
+        }
+
         public int SafetyMarginMs
         {
             get

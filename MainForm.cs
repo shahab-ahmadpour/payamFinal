@@ -123,16 +123,24 @@ namespace AutoClickUI
         // file watcher
         private FileSystemWatcher ntpWatcher;
 
+        // countdown progress tracking
+        private double waitTotalMs = 0;
+
         // -------------------------
         // UI Controls
         // -------------------------
         private Label lblLiveTime;
+        private Label lblHeroClock;
+        private Label lblHeroMeta;
+        private Label lblCountdown;
         private Label lblTargetTime;
         private Label lblProcessStatus;
         private Label lblConfigStatus;
         private Label lblNtpStatus;
         private Label lblPayamStatus;
         private Label lblClickCount;
+        private Label lblSyncDot;
+        private Label lblBrand;
 
         private TextBox txtConfigFolder;
         private TextBox txtLogFolder;
@@ -160,18 +168,23 @@ namespace AutoClickUI
         private Button btnManualConfig;
         private Button btnReadConfig;
 
-        private TabControl tabControl;
-        private TabPage tabMain;
-        private TabPage tabSettings;
-        private TabPage tabLogs;
+        private Panel panelHeader;
+        private Panel panelMain;
+        private Panel panelSettings;
+        private Panel panelLogs;
+        private SurfacePanel panelHero;
+        private SurfacePanel panelArm;
+        private SurfacePanel panelStatusChips;
+        private SurfacePanel panelSettingsFolders;
+        private SurfacePanel panelSettingsPayam;
+        private ThinProgressBar progressCountdown;
+
+        private NavButton btnNavConsole;
+        private NavButton btnNavSettings;
+        private NavButton btnNavLogs;
 
         private RichTextBox rtbLogs;
         private ComboBox cmbTimeSource;
-
-        private GroupBox gbStatus;
-        private GroupBox gbSettings;
-        private GroupBox gbPayamTime;
-        private GroupBox gbActions;
 
         private StatusStrip statusStrip;
         private ToolStripStatusLabel statusLabel;
@@ -287,7 +300,7 @@ namespace AutoClickUI
             UI(() =>
             {
                 lblNtpStatus.Text = $"NTP Status: Synced with {ntpServer}";
-                lblNtpStatus.ForeColor = Color.Green;
+                lblNtpStatus.ForeColor = AppTheme.Success;
                 txtNtpServer.Text = ntpServer;
             });
         }
@@ -431,7 +444,7 @@ namespace AutoClickUI
                 UI(() =>
                 {
                     lblNtpStatus.Text = "NTP Status: Disabled (System time)";
-                    lblNtpStatus.ForeColor = Color.Orange;
+                    lblNtpStatus.ForeColor = AppTheme.Warning;
                 });
             }
         }
@@ -645,7 +658,7 @@ namespace AutoClickUI
                         lblNtpStatus.Text = timeSourceMode == TimeSourceMode.System
                             ? "NTP Status: Disabled (System time)"
                             : "NTP Status: Idle (Payam mode)";
-                        lblNtpStatus.ForeColor = Color.Orange;
+                        lblNtpStatus.ForeColor = AppTheme.Warning;
                     });
                     return;
                 }
@@ -660,7 +673,7 @@ namespace AutoClickUI
                     UI(() =>
                     {
                         lblNtpStatus.Text = "NTP Status: Invalid server address";
-                        lblNtpStatus.ForeColor = Color.Red;
+                        lblNtpStatus.ForeColor = AppTheme.Danger;
                     });
                     return;
                 }
@@ -668,7 +681,7 @@ namespace AutoClickUI
                 UI(() =>
                 {
                     lblNtpStatus.Text = $"NTP Status: Syncing with {ntpServer} ...";
-                    lblNtpStatus.ForeColor = Color.Blue;
+                    lblNtpStatus.ForeColor = AppTheme.LogInfo;
                 });
 
                 var ntpTime = GetNtpTimeWithRetry(ntpServer, maxAttempts: 3);
@@ -1077,7 +1090,7 @@ namespace AutoClickUI
                     string timestamped = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
                     rtbLogs.SelectionStart = rtbLogs.TextLength;
                     rtbLogs.SelectionLength = 0;
-                    rtbLogs.SelectionColor = color ?? Color.Black;
+                    rtbLogs.SelectionColor = AppTheme.MapLogColor(color);
                     rtbLogs.AppendText(timestamped + Environment.NewLine);
                     rtbLogs.SelectionStart = rtbLogs.Text.Length;
                     rtbLogs.ScrollToCaret();
@@ -1153,85 +1166,296 @@ namespace AutoClickUI
         // -------------------------
         private void InitializeComponent()
         {
-            // Form Settings
-            this.Text = "PayamAutoClick v2.3";
+            this.Text = "Payam AutoClick — Precision Console";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
-
-            this.Size = new Size(600, 560);
+            this.Size = new Size(760, 780);
+            this.MinimumSize = new Size(720, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.FormClosing += MainForm_FormClosing;
+            AppTheme.StyleForm(this);
 
-            tabControl = new TabControl();
-            tabControl.Dock = DockStyle.Fill;
+            panelHeader = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 64,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(18, 12, 18, 12)
+            };
 
-            tabMain = new TabPage("Main");
-            tabSettings = new TabPage("Settings");
-            tabLogs = new TabPage("Logs");
+            lblBrand = new Label
+            {
+                Text = "PAYAM AUTOCLICK",
+                Location = new Point(18, 10),
+                Size = new Size(280, 24),
+                Font = AppTheme.BrandFont,
+                ForeColor = AppTheme.TextPrimary,
+                BackColor = Color.Transparent
+            };
+            var lblSubtitle = new Label
+            {
+                Text = "Precision Console  ·  v2.4",
+                Location = new Point(20, 36),
+                Size = new Size(260, 18),
+                Font = AppTheme.CaptionFont,
+                ForeColor = AppTheme.TextMuted,
+                BackColor = Color.Transparent
+            };
 
-            // Status Group
-            gbStatus = new GroupBox();
-            gbStatus.Text = "Status";
-            gbStatus.Location = new Point(10, 10);
-            gbStatus.Size = new Size(550, 175);
+            btnNavConsole = new NavButton { Text = "Console", Location = new Point(430, 16), Size = new Size(90, 32), Active = true };
+            btnNavSettings = new NavButton { Text = "Settings", Location = new Point(528, 16), Size = new Size(90, 32) };
+            btnNavLogs = new NavButton { Text = "Logs", Location = new Point(626, 16), Size = new Size(90, 32) };
+            btnNavConsole.Click += (s, e) => ShowSection(0);
+            btnNavSettings.Click += (s, e) => ShowSection(1);
+            btnNavLogs.Click += (s, e) => ShowSection(2);
 
-            lblLiveTime = new Label { Location = new Point(10, 25), Size = new Size(530, 20), Text = "Live Time: Starting..." };
-            lblTargetTime = new Label { Location = new Point(10, 50), Size = new Size(530, 20), Text = "Target Time: Not set" };
-            lblProcessStatus = new Label { Location = new Point(10, 75), Size = new Size(530, 20), Text = "Target Process: Not set" };
-            lblClickCount = new Label { Location = new Point(10, 100), Size = new Size(530, 20), Text = "Click Count: 1" };
-            lblConfigStatus = new Label { Location = new Point(10, 125), Size = new Size(530, 20), Text = "Config Status: Not Set" };
-            lblPayamStatus = new Label { Location = new Point(10, 150), Size = new Size(530, 20), Text = "Payam Sync: (starting...)" };
+            panelHeader.Controls.Add(lblBrand);
+            panelHeader.Controls.Add(lblSubtitle);
+            panelHeader.Controls.Add(btnNavConsole);
+            panelHeader.Controls.Add(btnNavSettings);
+            panelHeader.Controls.Add(btnNavLogs);
 
-            gbStatus.Controls.Add(lblLiveTime);
-            gbStatus.Controls.Add(lblTargetTime);
-            gbStatus.Controls.Add(lblProcessStatus);
-            gbStatus.Controls.Add(lblClickCount);
-            gbStatus.Controls.Add(lblConfigStatus);
-            gbStatus.Controls.Add(lblPayamStatus);
+            panelMain = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(18), Visible = true };
+            panelSettings = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(18), Visible = false, AutoScroll = true };
+            panelLogs = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(18), Visible = false };
 
-            tabMain.Controls.Add(gbStatus);
+            BuildConsoleSection();
+            BuildSettingsSection();
+            BuildLogsSection();
 
-            // Actions Group
-            gbActions = new GroupBox();
-            gbActions.Text = "Actions";
-            gbActions.Location = new Point(10, 195);
-            gbActions.Size = new Size(550, 270);
+            statusStrip = new StatusStrip();
+            statusLabel = new ToolStripStatusLabel { Text = "Ready" };
+            statusStrip.Items.Add(statusLabel);
+            AppTheme.StyleStatusStrip(statusStrip, statusLabel);
 
-            Label lblSetDate = new Label { Text = "Target Date:", Location = new Point(10, 25), Size = new Size(100, 20) };
-            dtpTargetDate = new DateTimePicker { Location = new Point(110, 25), Size = new Size(150, 20), Format = DateTimePickerFormat.Short, Value = DateTime.Today };
+            this.Controls.Add(panelMain);
+            this.Controls.Add(panelSettings);
+            this.Controls.Add(panelLogs);
+            this.Controls.Add(statusStrip);
+            this.Controls.Add(panelHeader);
 
-            Label lblSetTime = new Label { Text = "Target Time:", Location = new Point(270, 25), Size = new Size(100, 20) };
-            dtpTargetTime = new DateTimePicker { Location = new Point(370, 25), Size = new Size(150, 20), Format = DateTimePickerFormat.Time, ShowUpDown = true, Value = DateTime.Now.AddMinutes(1) };
+            try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High; } catch { }
 
-            Label lblProc = new Label { Text = "Target Process:", Location = new Point(10, 55), Size = new Size(100, 20) };
-            txtTargetProcess = new TextBox { Location = new Point(110, 55), Size = new Size(150, 20), Text = "Payam" };
+            liveTimeThread = new Thread(DisplayLiveTime) { IsBackground = true };
+            liveTimeThread.Start();
 
-            Label lblMs = new Label { Text = "Milliseconds:", Location = new Point(270, 55), Size = new Size(100, 20) };
-            nudMilliseconds = new NumericUpDown { Location = new Point(370, 55), Size = new Size(150, 20), Minimum = 0, Maximum = 999, Value = 0 };
+            UpdateTimeSourceUiEnabled();
+            ShowSection(0);
+        }
 
-            Label lblCount = new Label { Text = "Click Count:", Location = new Point(10, 85), Size = new Size(100, 20) };
-            nudClickCount = new NumericUpDown { Location = new Point(110, 85), Size = new Size(150, 20), Minimum = 1, Maximum = 500, Value = 1 };
+        private void ShowSection(int index)
+        {
+            panelMain.Visible = index == 0;
+            panelSettings.Visible = index == 1;
+            panelLogs.Visible = index == 2;
+            btnNavConsole.Active = index == 0;
+            btnNavSettings.Active = index == 1;
+            btnNavLogs.Active = index == 2;
+            if (index == 0) panelMain.BringToFront();
+            else if (index == 1) panelSettings.BringToFront();
+            else panelLogs.BringToFront();
+            panelHeader.BringToFront();
+            statusStrip.BringToFront();
+        }
+
+        private Label MakeCaption(string text, int x, int y, int w = 120)
+        {
+            var lbl = new Label
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(w, 18),
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            AppTheme.StyleLabel(lbl, muted: true);
+            lbl.Font = AppTheme.CaptionFont;
+            return lbl;
+        }
+
+        private void BuildConsoleSection()
+        {
+            panelHero = new SurfacePanel
+            {
+                Location = new Point(0, 0),
+                Size = new Size(708, 168),
+                Title = "Live Payam Time"
+            };
+
+            lblHeroClock = new Label
+            {
+                Text = "--:--:--.---",
+                Location = new Point(20, 36),
+                Size = new Size(660, 58),
+                Font = AppTheme.HeroFont,
+                ForeColor = AppTheme.Accent,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            lblHeroMeta = new Label
+            {
+                Text = "Source: starting…",
+                Location = new Point(24, 100),
+                Size = new Size(400, 20)
+            };
+            AppTheme.StyleLabel(lblHeroMeta, muted: true, mono: true);
+
+            lblSyncDot = new Label
+            {
+                Text = "●",
+                Location = new Point(640, 42),
+                Size = new Size(40, 40),
+                Font = new Font("Segoe UI", 18F, FontStyle.Bold),
+                ForeColor = AppTheme.TextMuted,
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            lblCountdown = new Label
+            {
+                Text = "Remaining  —",
+                Location = new Point(24, 124),
+                Size = new Size(400, 22),
+                Font = AppTheme.UiFontBold,
+                ForeColor = AppTheme.TextPrimary,
+                BackColor = Color.Transparent
+            };
+
+            progressCountdown = new ThinProgressBar
+            {
+                Location = new Point(24, 150),
+                Size = new Size(660, 6),
+                Progress = 0
+            };
+
+            lblLiveTime = new Label { Visible = false, Size = new Size(1, 1) };
+
+            panelHero.Controls.Add(lblHeroClock);
+            panelHero.Controls.Add(lblHeroMeta);
+            panelHero.Controls.Add(lblSyncDot);
+            panelHero.Controls.Add(lblCountdown);
+            panelHero.Controls.Add(progressCountdown);
+            panelHero.Controls.Add(lblLiveTime);
+
+            panelStatusChips = new SurfacePanel
+            {
+                Location = new Point(0, 180),
+                Size = new Size(708, 78),
+                Title = "Status"
+            };
+
+            lblTargetTime = new Label { Location = new Point(20, 28), Size = new Size(340, 18), Text = "Target  ·  Not set" };
+            lblProcessStatus = new Label { Location = new Point(370, 28), Size = new Size(310, 18), Text = "Process  ·  —" };
+            lblClickCount = new Label { Location = new Point(20, 50), Size = new Size(200, 18), Text = "Clicks  ·  1" };
+            lblConfigStatus = new Label { Location = new Point(230, 50), Size = new Size(220, 18), Text = "Config  ·  Not set" };
+            lblPayamStatus = new Label { Location = new Point(460, 50), Size = new Size(220, 18), Text = "Sync  ·  starting…" };
+            AppTheme.StyleLabel(lblTargetTime, mono: true);
+            AppTheme.StyleLabel(lblProcessStatus, muted: true);
+            AppTheme.StyleLabel(lblClickCount, muted: true);
+            AppTheme.StyleLabel(lblConfigStatus, muted: true);
+            AppTheme.StyleLabel(lblPayamStatus, muted: true);
+            lblPayamStatus.Font = AppTheme.CaptionFont;
+            lblConfigStatus.Font = AppTheme.CaptionFont;
+            lblClickCount.Font = AppTheme.CaptionFont;
+            lblProcessStatus.Font = AppTheme.CaptionFont;
+            lblTargetTime.Font = AppTheme.CaptionFont;
+
+            panelStatusChips.Controls.Add(lblTargetTime);
+            panelStatusChips.Controls.Add(lblProcessStatus);
+            panelStatusChips.Controls.Add(lblClickCount);
+            panelStatusChips.Controls.Add(lblConfigStatus);
+            panelStatusChips.Controls.Add(lblPayamStatus);
+
+            panelArm = new SurfacePanel
+            {
+                Location = new Point(0, 270),
+                Size = new Size(708, 390),
+                Title = "Arm"
+            };
+
+            panelArm.Controls.Add(MakeCaption("TARGET DATE", 20, 28));
+            dtpTargetDate = new DateTimePicker
+            {
+                Location = new Point(20, 48),
+                Size = new Size(160, 24),
+                Format = DateTimePickerFormat.Short,
+                Value = DateTime.Today
+            };
+            AppTheme.StyleDateTimePicker(dtpTargetDate);
+
+            panelArm.Controls.Add(MakeCaption("TARGET TIME", 200, 28));
+            dtpTargetTime = new DateTimePicker
+            {
+                Location = new Point(200, 48),
+                Size = new Size(160, 24),
+                Format = DateTimePickerFormat.Time,
+                ShowUpDown = true,
+                Value = DateTime.Now.AddMinutes(1)
+            };
+            AppTheme.StyleDateTimePicker(dtpTargetTime);
+
+            panelArm.Controls.Add(MakeCaption("MILLISECONDS", 380, 28));
+            nudMilliseconds = new NumericUpDown
+            {
+                Location = new Point(380, 48),
+                Size = new Size(120, 24),
+                Minimum = 0,
+                Maximum = 999,
+                Value = 0
+            };
+            AppTheme.StyleNumeric(nudMilliseconds);
+
+            panelArm.Controls.Add(MakeCaption("PROCESS", 520, 28));
+            txtTargetProcess = new TextBox
+            {
+                Location = new Point(520, 48),
+                Size = new Size(160, 24),
+                Text = "Payam"
+            };
+            AppTheme.StyleTextBox(txtTargetProcess);
+
+            panelArm.Controls.Add(MakeCaption("CLICK COUNT", 20, 88));
+            nudClickCount = new NumericUpDown
+            {
+                Location = new Point(20, 108),
+                Size = new Size(120, 24),
+                Minimum = 1,
+                Maximum = 500,
+                Value = 1
+            };
+            AppTheme.StyleNumeric(nudClickCount);
             nudClickCount.ValueChanged += (s, e) =>
             {
                 nudClickInterval.Enabled = nudClickCount.Value > 1;
                 if (nudClickCount.Value <= 1) nudClickInterval.Value = 0;
+                lblClickCount.Text = "Clicks  ·  " + ((int)nudClickCount.Value).ToString();
             };
 
-            Label lblInterval = new Label { Text = "Click Interval (ms):", Location = new Point(270, 85), Size = new Size(110, 20) };
-            nudClickInterval = new NumericUpDown { Location = new Point(370, 85), Size = new Size(150, 20), Minimum = 0, Maximum = 60000, Value = 0, Enabled = false };
+            panelArm.Controls.Add(MakeCaption("CLICK INTERVAL (MS)", 160, 88, 160));
+            nudClickInterval = new NumericUpDown
+            {
+                Location = new Point(160, 108),
+                Size = new Size(140, 24),
+                Minimum = 0,
+                Maximum = 60000,
+                Value = 0,
+                Enabled = false
+            };
+            AppTheme.StyleNumeric(nudClickInterval);
 
-            Label lblTimeSource = new Label { Text = "Time Source:", Location = new Point(10, 115), Size = new Size(100, 20) };
+            panelArm.Controls.Add(MakeCaption("TIME SOURCE", 320, 88, 160));
             cmbTimeSource = new ComboBox
             {
-                Location = new Point(110, 115),
-                Size = new Size(260, 21),
+                Location = new Point(320, 108),
+                Size = new Size(200, 24),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
+            AppTheme.StyleCombo(cmbTimeSource);
             cmbTimeSource.Items.Add("Payam API Time");
             cmbTimeSource.Items.Add("NTP");
             cmbTimeSource.Items.Add("System Time");
-            cmbTimeSource.SelectedIndex = 0; // Payam API default
+            cmbTimeSource.SelectedIndex = 0;
             cmbTimeSource.SelectedIndexChanged += (s, e) =>
             {
                 TimeSourceMode mode;
@@ -1244,46 +1468,70 @@ namespace AutoClickUI
                 SetTimeSourceMode(mode, syncNow: true);
             };
 
-            btnReadConfig = new Button { Text = "Read Config", Location = new Point(10, 155), Size = new Size(260, 30) };
-            btnReadConfig.Click += BtnReadConfig_Click;
+            var btnRead = new AccentButton { Text = "Read Config", Location = new Point(20, 160), Size = new Size(320, 40) };
+            btnRead.SetSecondary();
+            btnRead.Click += BtnReadConfig_Click;
+            btnReadConfig = btnRead;
 
-            btnManualConfig = new Button { Text = "Use Manual Settings", Location = new Point(280, 155), Size = new Size(260, 30) };
-            btnManualConfig.Click += BtnManualConfig_Click;
+            var btnManual = new AccentButton { Text = "Use Manual Settings", Location = new Point(360, 160), Size = new Size(320, 40) };
+            btnManual.SetSecondary();
+            btnManual.Click += BtnManualConfig_Click;
+            btnManualConfig = btnManual;
 
-            btnStart = new Button { Text = "Start", Location = new Point(10, 200), Size = new Size(260, 30) };
-            btnStart.Click += BtnStart_Click;
+            var start = new AccentButton { Text = "START", Location = new Point(20, 220), Size = new Size(430, 52) };
+            start.SetAccent(AppTheme.Start, AppTheme.StartHover);
+            start.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
+            start.Click += BtnStart_Click;
+            btnStart = start;
 
-            btnStop = new Button { Text = "Stop", Location = new Point(280, 200), Size = new Size(260, 30), Enabled = false };
-            btnStop.Click += BtnStop_Click;
+            var stop = new AccentButton { Text = "STOP", Location = new Point(470, 220), Size = new Size(210, 52), Enabled = false };
+            stop.SetAccent(AppTheme.StopEnabled, AppTheme.Danger);
+            stop.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
+            stop.Click += BtnStop_Click;
+            btnStop = stop;
 
-            gbActions.Controls.Add(lblSetDate);
-            gbActions.Controls.Add(dtpTargetDate);
-            gbActions.Controls.Add(lblSetTime);
-            gbActions.Controls.Add(dtpTargetTime);
-            gbActions.Controls.Add(lblProc);
-            gbActions.Controls.Add(txtTargetProcess);
-            gbActions.Controls.Add(lblMs);
-            gbActions.Controls.Add(nudMilliseconds);
-            gbActions.Controls.Add(lblCount);
-            gbActions.Controls.Add(nudClickCount);
-            gbActions.Controls.Add(lblInterval);
-            gbActions.Controls.Add(nudClickInterval);
-            gbActions.Controls.Add(lblTimeSource);
-            gbActions.Controls.Add(cmbTimeSource);
-            gbActions.Controls.Add(btnReadConfig);
-            gbActions.Controls.Add(btnManualConfig);
-            gbActions.Controls.Add(btnStart);
-            gbActions.Controls.Add(btnStop);
+            var hint = new Label
+            {
+                Text = "F12 fires on Payam clock + safety margin — never early.",
+                Location = new Point(20, 286),
+                Size = new Size(660, 20)
+            };
+            AppTheme.StyleLabel(hint, muted: true);
+            hint.Font = AppTheme.CaptionFont;
 
-            tabMain.Controls.Add(gbActions);
+            panelArm.Controls.Add(dtpTargetDate);
+            panelArm.Controls.Add(dtpTargetTime);
+            panelArm.Controls.Add(nudMilliseconds);
+            panelArm.Controls.Add(txtTargetProcess);
+            panelArm.Controls.Add(nudClickCount);
+            panelArm.Controls.Add(nudClickInterval);
+            panelArm.Controls.Add(cmbTimeSource);
+            panelArm.Controls.Add(btnReadConfig);
+            panelArm.Controls.Add(btnManualConfig);
+            panelArm.Controls.Add(btnStart);
+            panelArm.Controls.Add(btnStop);
+            panelArm.Controls.Add(hint);
 
-            // Settings tab
-            gbSettings = new GroupBox { Text = "Folders / NTP", Location = new Point(10, 10), Size = new Size(550, 150) };
+            panelMain.Controls.Add(panelHero);
+            panelMain.Controls.Add(panelStatusChips);
+            panelMain.Controls.Add(panelArm);
+        }
 
-            Label lblConfigFolder = new Label { Text = "Config Folder:", Location = new Point(10, 25), Size = new Size(100, 20) };
-            txtConfigFolder = new TextBox { Location = new Point(110, 25), Size = new Size(350, 20), Text = configFolder };
-            btnBrowseConfig = new Button { Text = "Browse", Location = new Point(470, 25), Size = new Size(70, 20) };
-            btnBrowseConfig.Click += (s, e) =>
+        private void BuildSettingsSection()
+        {
+            panelSettingsFolders = new SurfacePanel
+            {
+                Location = new Point(0, 0),
+                Size = new Size(708, 190),
+                Title = "Folders / NTP"
+            };
+
+            panelSettingsFolders.Controls.Add(MakeCaption("CONFIG FOLDER", 20, 28, 160));
+            txtConfigFolder = new TextBox { Location = new Point(20, 48), Size = new Size(540, 24), Text = configFolder };
+            AppTheme.StyleTextBox(txtConfigFolder);
+            var browseCfg = new AccentButton { Text = "Browse", Location = new Point(574, 44), Size = new Size(110, 30) };
+            browseCfg.SetSecondary();
+            browseCfg.Click += (s, e) =>
             {
                 using (var dialog = new FolderBrowserDialog())
                 {
@@ -1291,19 +1539,20 @@ namespace AutoClickUI
                     {
                         txtConfigFolder.Text = dialog.SelectedPath;
                         configFolder = dialog.SelectedPath;
-
                         DisposeWatcher();
                         SetupNtpConfigWatcher();
-
                         LoadNtpServerFromFile(overwriteTextbox: true);
                     }
                 }
             };
+            btnBrowseConfig = browseCfg;
 
-            Label lblLogFolder = new Label { Text = "Log Folder:", Location = new Point(10, 55), Size = new Size(100, 20) };
-            txtLogFolder = new TextBox { Location = new Point(110, 55), Size = new Size(350, 20), Text = logFolder };
-            btnBrowseLog = new Button { Text = "Browse", Location = new Point(470, 55), Size = new Size(70, 20) };
-            btnBrowseLog.Click += (s, e) =>
+            panelSettingsFolders.Controls.Add(MakeCaption("LOG FOLDER", 20, 82, 160));
+            txtLogFolder = new TextBox { Location = new Point(20, 102), Size = new Size(540, 24), Text = logFolder };
+            AppTheme.StyleTextBox(txtLogFolder);
+            var browseLog = new AccentButton { Text = "Browse", Location = new Point(574, 98), Size = new Size(110, 30) };
+            browseLog.SetSecondary();
+            browseLog.Click += (s, e) =>
             {
                 using (var dialog = new FolderBrowserDialog())
                 {
@@ -1314,95 +1563,110 @@ namespace AutoClickUI
                     }
                 }
             };
+            btnBrowseLog = browseLog;
 
-            Label lblNtpSrv = new Label { Text = "NTP Server:", Location = new Point(10, 85), Size = new Size(100, 20) };
-            txtNtpServer = new TextBox { Location = new Point(110, 85), Size = new Size(280, 20), Text = ntpServer, Enabled = false };
-
-            btnSyncNtp = new Button { Text = "Sync NTP", Location = new Point(400, 85), Size = new Size(140, 25), Enabled = false };
-            btnSyncNtp.Click += (s, e) =>
+            panelSettingsFolders.Controls.Add(MakeCaption("NTP SERVER", 20, 136, 160));
+            txtNtpServer = new TextBox { Location = new Point(20, 156), Size = new Size(420, 24), Text = ntpServer, Enabled = false };
+            AppTheme.StyleTextBox(txtNtpServer);
+            var syncNtp = new AccentButton { Text = "Sync NTP", Location = new Point(454, 152), Size = new Size(230, 30), Enabled = false };
+            syncNtp.SetSecondary();
+            syncNtp.Click += (s, e) =>
             {
                 var server = SafeGetText(txtNtpServer);
                 if (!IsValidNtpServerAddress(server))
                 {
-                    LogMessage($"Invalid NTP server address: {server}", Color.Red);
+                    LogMessage("Invalid NTP server address: " + server, Color.Red);
                     UI(() =>
                     {
                         lblNtpStatus.Text = "NTP Status: Invalid server address";
-                        lblNtpStatus.ForeColor = Color.Red;
+                        lblNtpStatus.ForeColor = AppTheme.Danger;
                     });
                     return;
                 }
-
-                // User override: save to authoritative file, then sync using file
                 ntpServer = server;
                 SaveNtpServerToFile(ntpServer);
-
                 ThreadPool.QueueUserWorkItem(_ => SyncWithNtpServer());
             };
+            btnSyncNtp = syncNtp;
 
-            lblNtpStatus = new Label { Location = new Point(10, 115), Size = new Size(530, 20), Text = "NTP Status: Idle (Payam mode)" };
+            lblNtpStatus = new Label
+            {
+                Location = new Point(20, 0),
+                Size = new Size(1, 1),
+                Visible = false,
+                Text = "NTP Status: Idle (Payam mode)"
+            };
 
-            gbSettings.Controls.Add(lblConfigFolder);
-            gbSettings.Controls.Add(txtConfigFolder);
-            gbSettings.Controls.Add(btnBrowseConfig);
-            gbSettings.Controls.Add(lblLogFolder);
-            gbSettings.Controls.Add(txtLogFolder);
-            gbSettings.Controls.Add(btnBrowseLog);
-            gbSettings.Controls.Add(lblNtpSrv);
-            gbSettings.Controls.Add(txtNtpServer);
-            gbSettings.Controls.Add(btnSyncNtp);
-            gbSettings.Controls.Add(lblNtpStatus);
+            panelSettingsFolders.Controls.Add(txtConfigFolder);
+            panelSettingsFolders.Controls.Add(btnBrowseConfig);
+            panelSettingsFolders.Controls.Add(txtLogFolder);
+            panelSettingsFolders.Controls.Add(btnBrowseLog);
+            panelSettingsFolders.Controls.Add(txtNtpServer);
+            panelSettingsFolders.Controls.Add(btnSyncNtp);
+            panelSettingsFolders.Controls.Add(lblNtpStatus);
 
-            tabSettings.Controls.Add(gbSettings);
+            panelSettingsPayam = new SurfacePanel
+            {
+                Location = new Point(0, 206),
+                Size = new Size(708, 230),
+                Title = "Payam API Time"
+            };
 
-            // Payam API time settings
-            gbPayamTime = new GroupBox { Text = "Payam API Time", Location = new Point(10, 170), Size = new Size(550, 175) };
-
-            Label lblPayamUrl = new Label { Text = "API URL:", Location = new Point(10, 25), Size = new Size(100, 20) };
+            panelSettingsPayam.Controls.Add(MakeCaption("API URL", 20, 28, 160));
             txtPayamApiUrl = new TextBox
             {
-                Location = new Point(110, 25),
-                Size = new Size(430, 20),
+                Location = new Point(20, 48),
+                Size = new Size(660, 24),
                 Text = PayamTimeConfig.DefaultApiUrl
             };
+            AppTheme.StyleTextBox(txtPayamApiUrl);
 
-            Label lblYearCode = new Label { Text = "YearCode:", Location = new Point(10, 55), Size = new Size(100, 20) };
+            panelSettingsPayam.Controls.Add(MakeCaption("YEARCODE", 20, 82, 160));
             txtPayamYearCode = new TextBox
             {
-                Location = new Point(110, 55),
-                Size = new Size(150, 20),
+                Location = new Point(20, 102),
+                Size = new Size(200, 24),
                 Text = PayamTimeConfig.DefaultYearCode
             };
+            AppTheme.StyleTextBox(txtPayamYearCode);
 
-            Label lblToken = new Label { Text = "X-Content-Type-Options:", Location = new Point(270, 55), Size = new Size(140, 20) };
+            panelSettingsPayam.Controls.Add(MakeCaption("X-CONTENT-TYPE-OPTIONS", 240, 82, 220));
             txtPayamContentTypeOptions = new TextBox
             {
-                Location = new Point(410, 55),
-                Size = new Size(130, 20),
+                Location = new Point(240, 102),
+                Size = new Size(200, 24),
                 Text = PayamTimeConfig.DefaultContentTypeOptions
             };
+            AppTheme.StyleTextBox(txtPayamContentTypeOptions);
 
-            Label lblMargin = new Label { Text = "Safety Margin (ms):", Location = new Point(10, 85), Size = new Size(120, 20) };
+            panelSettingsPayam.Controls.Add(MakeCaption("SAFETY MARGIN (MS)", 460, 82, 180));
             nudSafetyMargin = new NumericUpDown
             {
-                Location = new Point(130, 85),
-                Size = new Size(80, 20),
+                Location = new Point(460, 102),
+                Size = new Size(120, 24),
                 Minimum = 0,
                 Maximum = 500,
                 Value = PayamTimeConfig.DefaultSafetyMarginMs
             };
-            Label lblMarginHint = new Label
+            AppTheme.StyleNumeric(nudSafetyMargin);
+
+            var marginHint = new Label
             {
-                Text = "F12 never fires early vs Payam (+0..50 typical)",
-                Location = new Point(220, 87),
-                Size = new Size(310, 20)
+                Text = "Positive delay after Payam target — F12 never fires early (0…50 typical).",
+                Location = new Point(20, 138),
+                Size = new Size(660, 18)
             };
+            AppTheme.StyleLabel(marginHint, muted: true);
+            marginHint.Font = AppTheme.CaptionFont;
 
-            btnSavePayamConfig = new Button { Text = "Save Payam Config", Location = new Point(10, 120), Size = new Size(160, 30) };
-            btnSavePayamConfig.Click += (s, e) => SavePayamConfigFromUi();
+            var savePayam = new AccentButton { Text = "Save Payam Config", Location = new Point(20, 168), Size = new Size(220, 40) };
+            savePayam.SetSecondary();
+            savePayam.Click += (s, e) => SavePayamConfigFromUi();
+            btnSavePayamConfig = savePayam;
 
-            btnSyncPayam = new Button { Text = "Apply / Resync Payam", Location = new Point(180, 120), Size = new Size(160, 30) };
-            btnSyncPayam.Click += (s, e) =>
+            var syncPayam = new AccentButton { Text = "Apply / Resync Payam", Location = new Point(256, 168), Size = new Size(220, 40) };
+            syncPayam.SetAccent(AppTheme.AccentDim, AppTheme.Accent);
+            syncPayam.Click += (s, e) =>
             {
                 SavePayamConfigFromUi();
                 if (timeSourceMode != TimeSourceMode.PayamApi)
@@ -1411,44 +1675,37 @@ namespace AutoClickUI
                     EnsurePayamProviderStarted();
                 LogMessage("Payam config applied; waiting for next second-edge phase lock.", Color.Blue);
             };
+            btnSyncPayam = syncPayam;
 
-            gbPayamTime.Controls.Add(lblPayamUrl);
-            gbPayamTime.Controls.Add(txtPayamApiUrl);
-            gbPayamTime.Controls.Add(lblYearCode);
-            gbPayamTime.Controls.Add(txtPayamYearCode);
-            gbPayamTime.Controls.Add(lblToken);
-            gbPayamTime.Controls.Add(txtPayamContentTypeOptions);
-            gbPayamTime.Controls.Add(lblMargin);
-            gbPayamTime.Controls.Add(nudSafetyMargin);
-            gbPayamTime.Controls.Add(lblMarginHint);
-            gbPayamTime.Controls.Add(btnSavePayamConfig);
-            gbPayamTime.Controls.Add(btnSyncPayam);
+            panelSettingsPayam.Controls.Add(txtPayamApiUrl);
+            panelSettingsPayam.Controls.Add(txtPayamYearCode);
+            panelSettingsPayam.Controls.Add(txtPayamContentTypeOptions);
+            panelSettingsPayam.Controls.Add(nudSafetyMargin);
+            panelSettingsPayam.Controls.Add(marginHint);
+            panelSettingsPayam.Controls.Add(btnSavePayamConfig);
+            panelSettingsPayam.Controls.Add(btnSyncPayam);
 
-            tabSettings.Controls.Add(gbPayamTime);
+            panelSettings.Controls.Add(panelSettingsFolders);
+            panelSettings.Controls.Add(panelSettingsPayam);
+        }
 
-            // Logs tab
-            rtbLogs = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.White, Font = new Font("Consolas", 9F) };
-            tabLogs.Controls.Add(rtbLogs);
+        private void BuildLogsSection()
+        {
+            var logSurface = new SurfacePanel
+            {
+                Dock = DockStyle.Fill,
+                Title = "Event Log",
+                Padding = new Padding(12, 28, 12, 12)
+            };
 
-            tabControl.TabPages.Add(tabMain);
-            tabControl.TabPages.Add(tabSettings);
-            tabControl.TabPages.Add(tabLogs);
-
-            this.Controls.Add(tabControl);
-
-            statusStrip = new StatusStrip();
-            statusLabel = new ToolStripStatusLabel { Text = "Ready" };
-            statusStrip.Items.Add(statusLabel);
-            this.Controls.Add(statusStrip);
-
-            // Raise priority for better scheduling
-            try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High; } catch { }
-
-            // start live time thread
-            liveTimeThread = new Thread(DisplayLiveTime) { IsBackground = true };
-            liveTimeThread.Start();
-
-            UpdateTimeSourceUiEnabled();
+            rtbLogs = new RichTextBox
+            {
+                Dock = DockStyle.Fill,
+                ReadOnly = true
+            };
+            AppTheme.StyleRichText(rtbLogs);
+            logSurface.Controls.Add(rtbLogs);
+            panelLogs.Controls.Add(logSurface);
         }
 
         // -------------------------
@@ -1693,6 +1950,8 @@ namespace AutoClickUI
                 hasStarted = true;
                 isWaiting = true;
 
+                waitTotalMs = Math.Max(1, (GetFireThreshold() - GetCurrentTime()).TotalMilliseconds);
+
                 waitingThread = new Thread(WaitForTargetTime) { IsBackground = true };
                 waitingThread.Start();
 
@@ -1702,7 +1961,8 @@ namespace AutoClickUI
                     btnStop.Enabled = true;
                     btnReadConfig.Enabled = false;
                     btnManualConfig.Enabled = false;
-                    statusLabel.Text = "Waiting for target time...";
+                    statusLabel.Text = "Armed · waiting for target";
+                    if (progressCountdown != null) progressCountdown.Progress = 0;
                 });
 
                 LogMessage($"Waiting for target time: {targetTime:yyyy/MM/dd HH:mm:ss.fff} via {DescribeTimeSourceForLog()}", Color.Blue);
@@ -1755,11 +2015,11 @@ namespace AutoClickUI
                     {
                         bool running = IsProcessRunning(targetProcess);
                         string ps = running ? "Running" : "Not Running";
-                        Color pc = running ? Color.Green : Color.Red;
+                        Color pc = running ? AppTheme.Success : AppTheme.Danger;
 
                         UI(() =>
                         {
-                            lblProcessStatus.Text = $"Target Process: {targetProcess} ({ps})";
+                            lblProcessStatus.Text = $"Process  ·  {targetProcess} ({ps})";
                             lblProcessStatus.ForeColor = pc;
                         });
 
@@ -1768,35 +2028,87 @@ namespace AutoClickUI
 
                     var now = GetCurrentTime();
                     string source = GetTimeSourceLabel();
-                    string payamStatus = payamTimeProvider != null ? payamTimeProvider.Status : "Payam Sync: (off)";
+                    string payamStatus = payamTimeProvider != null ? payamTimeProvider.Status : "Sync  ·  off";
                     bool payamOk = payamTimeProvider != null && payamTimeProvider.HasPhaseLock;
+                    bool payamProv = payamTimeProvider != null && payamTimeProvider.HasSync && !payamOk;
+
+                    string remText = "Remaining  —";
+                    double progress = 0;
+                    string statusText = null;
+
+                    if (hasStarted && isWaiting)
+                    {
+                        var rem = GetFireThreshold() - now;
+                        if (rem.TotalMilliseconds > 0)
+                        {
+                            string fmt = rem.TotalHours >= 1
+                                ? $"{rem.Hours:D2}:{rem.Minutes:D2}:{rem.Seconds:D2}.{rem.Milliseconds:D3}"
+                                : $"{rem.Minutes:D2}:{rem.Seconds:D2}.{rem.Milliseconds:D3}";
+                            remText = "Remaining  " + fmt;
+                            statusText = "Armed · " + fmt;
+
+                            if (waitTotalMs > 1)
+                            {
+                                double left = rem.TotalMilliseconds;
+                                progress = 1.0 - (left / waitTotalMs);
+                                if (progress < 0) progress = 0;
+                                if (progress > 1) progress = 1;
+                            }
+                        }
+                        else
+                        {
+                            remText = "Remaining  00:00.000";
+                            progress = 1;
+                            statusText = "Firing…";
+                        }
+                    }
+                    else if (!hasStarted)
+                    {
+                        remText = "Remaining  —";
+                        progress = 0;
+                    }
+
+                    string syncChip = payamStatus;
+                    if (!syncChip.StartsWith("Sync", StringComparison.OrdinalIgnoreCase)
+                        && !syncChip.StartsWith("Payam", StringComparison.OrdinalIgnoreCase))
+                        syncChip = "Sync  ·  " + syncChip;
+                    else if (syncChip.StartsWith("Payam", StringComparison.OrdinalIgnoreCase))
+                        syncChip = syncChip.Replace("Payam Sync:", "Sync  ·").Replace("Payam synced", "Sync  · locked");
 
                     UI(() =>
                     {
-                        lblLiveTime.Text = $"Live Time: {now:yyyy/MM/dd HH:mm:ss.fff} {source}";
+                        if (lblHeroClock != null)
+                            lblHeroClock.Text = now.ToString("HH:mm:ss.fff");
+                        if (lblLiveTime != null)
+                            lblLiveTime.Text = $"Live Time: {now:yyyy/MM/dd HH:mm:ss.fff} {source}";
+                        if (lblHeroMeta != null)
+                            lblHeroMeta.Text = now.ToString("yyyy/MM/dd") + "  " + source;
+
+                        if (lblSyncDot != null)
+                        {
+                            if (timeSourceMode == TimeSourceMode.PayamApi)
+                                lblSyncDot.ForeColor = payamOk ? AppTheme.Success : (payamProv ? AppTheme.Warning : AppTheme.TextMuted);
+                            else if (timeSourceMode == TimeSourceMode.Ntp)
+                                lblSyncDot.ForeColor = hasNtpSync ? AppTheme.Success : AppTheme.Warning;
+                            else
+                                lblSyncDot.ForeColor = AppTheme.LogInfo;
+                        }
 
                         if (lblPayamStatus != null)
                         {
-                            lblPayamStatus.Text = payamStatus.StartsWith("Payam", StringComparison.OrdinalIgnoreCase)
-                                ? payamStatus
-                                : "Payam Sync: " + payamStatus;
+                            lblPayamStatus.Text = syncChip;
                             lblPayamStatus.ForeColor = payamOk
-                                ? Color.Green
-                                : (payamTimeProvider != null && payamTimeProvider.HasSync ? Color.DarkOrange : Color.Gray);
+                                ? AppTheme.Success
+                                : (payamProv ? AppTheme.Warning : AppTheme.TextMuted);
                         }
 
-                        if (hasStarted && isWaiting)
-                        {
-                            var rem = GetFireThreshold() - now;
-                            if (rem.TotalMilliseconds > 0)
-                            {
-                                string fmt = rem.TotalHours >= 1
-                                    ? $"{rem.Hours:D2}:{rem.Minutes:D2}:{rem.Seconds:D2}.{rem.Milliseconds:D3}"
-                                    : $"{rem.Minutes:D2}:{rem.Seconds:D2}.{rem.Milliseconds:D3}";
+                        if (lblCountdown != null)
+                            lblCountdown.Text = remText;
+                        if (progressCountdown != null)
+                            progressCountdown.Progress = progress;
 
-                                statusLabel.Text = $"Waiting... Remaining: {fmt}";
-                            }
-                        }
+                        if (statusText != null)
+                            statusLabel.Text = statusText;
                     });
 
                     Thread.Sleep(50);
