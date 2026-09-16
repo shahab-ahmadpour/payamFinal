@@ -105,9 +105,13 @@ namespace AutoClickUI
 
         // NTP time model: baseTime + elapsedStopwatch
         private volatile bool hasNtpSync = false;
-        private volatile bool useSystemTime = false;
         private DateTime ntpBaseTime;
         private Stopwatch ntpStopwatch = new Stopwatch();
+
+        // Time source (Payam API is default)
+        private TimeSourceMode timeSourceMode = TimeSourceMode.PayamApi;
+        private PayamTimeConfig payamConfig = new PayamTimeConfig();
+        private PayamTimeProvider payamTimeProvider;
 
         // threading
         private Thread liveTimeThread;
@@ -127,21 +131,28 @@ namespace AutoClickUI
         private Label lblProcessStatus;
         private Label lblConfigStatus;
         private Label lblNtpStatus;
+        private Label lblPayamStatus;
         private Label lblClickCount;
 
         private TextBox txtConfigFolder;
         private TextBox txtLogFolder;
         private TextBox txtTargetProcess;
         private TextBox txtNtpServer;
+        private TextBox txtPayamApiUrl;
+        private TextBox txtPayamYearCode;
+        private TextBox txtPayamContentTypeOptions;
 
         private NumericUpDown nudMilliseconds;
         private NumericUpDown nudClickCount;
         private NumericUpDown nudClickInterval;
+        private NumericUpDown nudSafetyMargin;
 
         private DateTimePicker dtpTargetDate;
         private DateTimePicker dtpTargetTime;
 
         private Button btnSyncNtp;
+        private Button btnSyncPayam;
+        private Button btnSavePayamConfig;
         private Button btnStart;
         private Button btnStop;
         private Button btnBrowseConfig;
@@ -155,10 +166,11 @@ namespace AutoClickUI
         private TabPage tabLogs;
 
         private RichTextBox rtbLogs;
-        private CheckBox chkUseSystemTime;
+        private ComboBox cmbTimeSource;
 
         private GroupBox gbStatus;
         private GroupBox gbSettings;
+        private GroupBox gbPayamTime;
         private GroupBox gbActions;
 
         private StatusStrip statusStrip;
@@ -174,24 +186,26 @@ namespace AutoClickUI
 
             InitializeComponent();
 
-            // 1) Always load NTP server from ntp_config.txt (authoritative)
+            // 1) Payam API time config (default time source)
+            payamConfig = PayamTimeConfig.Load();
+            ApplyPayamConfigToUi();
+            EnsurePayamProviderStarted();
+
+            // 2) Always load NTP server from ntp_config.txt (authoritative for NTP mode)
             LoadNtpServerFromFile(overwriteTextbox: true);
 
-            // 2) Start watcher so any manual edit of ntp_config.txt takes effect automatically
+            // 3) Start watcher so any manual edit of ntp_config.txt takes effect automatically
             SetupNtpConfigWatcher();
 
-            // 3) Auto sync NTP on startup (unless user chose system time)
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                LogMessage("Auto NTP sync on startup...", Color.Blue);
-                SyncWithNtpServer();
-            });
+            // 4) Auto-start sync for the selected mode
+            ThreadPool.QueueUserWorkItem(_ => AutoSyncSelectedTimeSource());
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             StopAllOperations();
             DisposeWatcher();
+            DisposePayamProvider();
 
             // restore timer resolution
             timeEndPeriod(1);
@@ -218,11 +232,48 @@ namespace AutoClickUI
         // -------------------------
         private DateTime GetCurrentTime()
         {
-            if (useSystemTime || !hasNtpSync)
-                return DateTime.Now;
+            switch (timeSourceMode)
+            {
+                case TimeSourceMode.System:
+                    return DateTime.Now;
 
-            // ntpBaseTime is in local Iran time (as you already used)
-            return ntpBaseTime.AddMilliseconds(ntpStopwatch.Elapsed.TotalMilliseconds);
+                case TimeSourceMode.Ntp:
+                    if (!hasNtpSync)
+                        return DateTime.Now;
+                    return ntpBaseTime.AddMilliseconds(ntpStopwatch.Elapsed.TotalMilliseconds);
+
+                case TimeSourceMode.PayamApi:
+                default:
+                    if (payamTimeProvider != null && payamTimeProvider.HasSync)
+                        return payamTimeProvider.GetCurrentTime();
+                    return DateTime.Now;
+            }
+        }
+
+        private DateTime GetFireThreshold()
+        {
+            if (timeSourceMode == TimeSourceMode.PayamApi && payamTimeProvider != null)
+                return payamTimeProvider.GetFireThreshold(targetTime);
+
+            return targetTime;
+        }
+
+        private string GetTimeSourceLabel()
+        {
+            switch (timeSourceMode)
+            {
+                case TimeSourceMode.System:
+                    return "(System)";
+                case TimeSourceMode.Ntp:
+                    return hasNtpSync ? $"(NTP: {ntpServer})" : "(System/NTP pending)";
+                case TimeSourceMode.PayamApi:
+                default:
+                    if (payamTimeProvider != null && payamTimeProvider.HasPhaseLock)
+                        return "(Payam API)";
+                    if (payamTimeProvider != null && payamTimeProvider.HasSync)
+                        return "(Payam provisional)";
+                    return "(System/Payam pending)";
+            }
         }
 
         private void ApplyNtpSync(DateTime ntpTimeLocal)
@@ -230,7 +281,6 @@ namespace AutoClickUI
             ntpBaseTime = ntpTimeLocal;
             ntpStopwatch.Restart();
             hasNtpSync = true;
-            useSystemTime = false;
 
             LogMessage($"NTP synced. Base NTP time: {ntpBaseTime:yyyy/MM/dd HH:mm:ss.fff}", Color.Green);
 
@@ -240,6 +290,174 @@ namespace AutoClickUI
                 lblNtpStatus.ForeColor = Color.Green;
                 txtNtpServer.Text = ntpServer;
             });
+        }
+
+        private void EnsurePayamProviderStarted()
+        {
+            if (payamTimeProvider == null)
+            {
+                payamTimeProvider = new PayamTimeProvider(payamConfig, (msg, isError) =>
+                    LogMessage(msg, isError ? Color.Orange : Color.Blue));
+                payamTimeProvider.Start();
+            }
+            else
+            {
+                payamTimeProvider.UpdateConfig(payamConfig);
+            }
+        }
+
+        private void DisposePayamProvider()
+        {
+            try
+            {
+                if (payamTimeProvider != null)
+                {
+                    payamTimeProvider.Dispose();
+                    payamTimeProvider = null;
+                }
+            }
+            catch { }
+        }
+
+        private void AutoSyncSelectedTimeSource()
+        {
+            if (timeSourceMode == TimeSourceMode.PayamApi)
+            {
+                LogMessage("Auto Payam API time sync on startup...", Color.Blue);
+                EnsurePayamProviderStarted();
+            }
+            else if (timeSourceMode == TimeSourceMode.Ntp)
+            {
+                LogMessage("Auto NTP sync on startup...", Color.Blue);
+                SyncWithNtpServer();
+            }
+            else
+            {
+                LogMessage("Using system time on startup.", Color.Orange);
+            }
+        }
+
+        private void ApplyPayamConfigToUi()
+        {
+            if (IsHandleCreated && InvokeRequired)
+                UI(ApplyPayamConfigToUiCore);
+            else
+                ApplyPayamConfigToUiCore();
+        }
+
+        private void ApplyPayamConfigToUiCore()
+        {
+            if (txtPayamApiUrl != null) txtPayamApiUrl.Text = payamConfig.ApiUrl ?? PayamTimeConfig.DefaultApiUrl;
+            if (txtPayamYearCode != null) txtPayamYearCode.Text = payamConfig.YearCode ?? PayamTimeConfig.DefaultYearCode;
+            if (txtPayamContentTypeOptions != null)
+                txtPayamContentTypeOptions.Text = payamConfig.ContentTypeOptions ?? PayamTimeConfig.DefaultContentTypeOptions;
+            if (nudSafetyMargin != null)
+            {
+                int margin = Math.Max(0, Math.Min(500, payamConfig.SafetyMarginMs));
+                nudSafetyMargin.Value = margin;
+            }
+        }
+
+        private bool TryReadPayamConfigFromUi(out string error)
+        {
+            error = null;
+            string apiUrl = SafeGetText(txtPayamApiUrl);
+            string yearCode = SafeGetText(txtPayamYearCode);
+            string token = SafeGetText(txtPayamContentTypeOptions);
+
+            if (string.IsNullOrWhiteSpace(apiUrl))
+            {
+                error = "Payam API URL is empty.";
+                return false;
+            }
+
+            Uri uri;
+            if (!Uri.TryCreate(apiUrl, UriKind.Absolute, out uri)
+                || !string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Payam API URL must be an absolute http:// address.";
+                return false;
+            }
+
+            payamConfig.ApiUrl = apiUrl;
+            payamConfig.YearCode = yearCode ?? string.Empty;
+            payamConfig.ContentTypeOptions = token ?? string.Empty;
+            payamConfig.SafetyMarginMs = (int)nudSafetyMargin.Value;
+            return true;
+        }
+
+        private void SavePayamConfigFromUi()
+        {
+            string error;
+            if (!TryReadPayamConfigFromUi(out error))
+            {
+                LogMessage(error, Color.Red);
+                return;
+            }
+
+            try
+            {
+                payamConfig.Save();
+                EnsurePayamProviderStarted();
+                LogMessage($"Payam time config saved: {PayamTimeConfig.DefaultConfigPath}", Color.Green);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Failed to save Payam time config: {ex.Message}", Color.Red);
+            }
+        }
+
+        private void SetTimeSourceMode(TimeSourceMode mode, bool syncNow)
+        {
+            timeSourceMode = mode;
+            UpdateTimeSourceUiEnabled();
+
+            if (mode == TimeSourceMode.PayamApi)
+            {
+                LogMessage("Time source: Payam API Time.", Color.Blue);
+                EnsurePayamProviderStarted();
+                if (syncNow)
+                    LogMessage("Payam sync is continuous (phase-lock on second edges).", Color.Blue);
+            }
+            else if (mode == TimeSourceMode.Ntp)
+            {
+                LogMessage("Time source: NTP.", Color.Blue);
+                if (syncNow)
+                    ThreadPool.QueueUserWorkItem(_ => SyncWithNtpServer());
+            }
+            else
+            {
+                LogMessage("Time source: System time.", Color.Orange);
+                UI(() =>
+                {
+                    lblNtpStatus.Text = "NTP Status: Disabled (System time)";
+                    lblNtpStatus.ForeColor = Color.Orange;
+                });
+            }
+        }
+
+        private void UpdateTimeSourceUiEnabled()
+        {
+            if (IsHandleCreated && InvokeRequired)
+                UI(UpdateTimeSourceUiEnabledCore);
+            else
+                UpdateTimeSourceUiEnabledCore();
+        }
+
+        private void UpdateTimeSourceUiEnabledCore()
+        {
+            bool ntp = timeSourceMode == TimeSourceMode.Ntp;
+            bool payam = timeSourceMode == TimeSourceMode.PayamApi;
+
+            if (txtNtpServer != null) txtNtpServer.Enabled = ntp;
+            if (btnSyncNtp != null) btnSyncNtp.Enabled = ntp;
+
+            if (txtPayamApiUrl != null) txtPayamApiUrl.Enabled = payam;
+            if (txtPayamYearCode != null) txtPayamYearCode.Enabled = payam;
+            if (txtPayamContentTypeOptions != null) txtPayamContentTypeOptions.Enabled = payam;
+            if (nudSafetyMargin != null) nudSafetyMargin.Enabled = payam;
+            if (btnSyncPayam != null) btnSyncPayam.Enabled = payam;
+            if (btnSavePayamConfig != null) btnSavePayamConfig.Enabled = payam;
         }
 
         // -------------------------
@@ -310,7 +528,7 @@ namespace AutoClickUI
                         LogMessage($"NTP server changed via file: {oldServer} -> {ntpServer}", Color.Green);
 
                         // Re-sync automatically if NTP mode is active
-                        if (!useSystemTime)
+                        if (timeSourceMode == TimeSourceMode.Ntp)
                         {
                             SyncWithNtpServer();
                         }
@@ -419,12 +637,14 @@ namespace AutoClickUI
         {
             try
             {
-                if (useSystemTime)
+                if (timeSourceMode != TimeSourceMode.Ntp)
                 {
-                    LogMessage("Skipping NTP sync because 'Use System Time' is enabled.", Color.Orange);
+                    LogMessage("Skipping NTP sync because NTP mode is not selected.", Color.Orange);
                     UI(() =>
                     {
-                        lblNtpStatus.Text = "NTP Status: Disabled";
+                        lblNtpStatus.Text = timeSourceMode == TimeSourceMode.System
+                            ? "NTP Status: Disabled (System time)"
+                            : "NTP Status: Idle (Payam mode)";
                         lblNtpStatus.ForeColor = Color.Orange;
                     });
                     return;
@@ -487,15 +707,14 @@ namespace AutoClickUI
 
             // fallback policy:
             // - if we have previous sync, keep it (do not jump to system time silently)
-            // - else use system time
+            // - else use system time reading for this call only
             if (hasNtpSync)
             {
                 LogMessage("NTP unavailable; keeping last NTP base time.", Color.Orange);
                 return ntpBaseTime.AddMilliseconds(ntpStopwatch.Elapsed.TotalMilliseconds);
             }
 
-            LogMessage("NTP unavailable; falling back to system time.", Color.Red);
-            useSystemTime = true;
+            LogMessage("NTP unavailable; falling back to system time reading.", Color.Red);
             return DateTime.Now;
         }
 
@@ -584,7 +803,9 @@ namespace AutoClickUI
                 while (isWaiting)
                 {
                     var now = GetCurrentTime();
-                    double remainingMs = (targetTime - now).TotalMilliseconds;
+                    // Payam mode: never fire early — wait until target + positive safety margin.
+                    var fireAt = GetFireThreshold();
+                    double remainingMs = (fireAt - now).TotalMilliseconds;
 
                     if (remainingMs <= 0)
                     {
@@ -809,7 +1030,9 @@ namespace AutoClickUI
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine($"ComputerName: {machineName}");
                 sb.AppendLine($"Target Time: {targetTime:yyyy/MM/dd HH:mm:ss.fff}");
-                sb.AppendLine($"NTP Server: {(useSystemTime ? "Disabled(System)" : ntpServer)}");
+                sb.AppendLine($"Time Source: {DescribeTimeSourceForLog()}");
+                if (timeSourceMode == TimeSourceMode.PayamApi)
+                    sb.AppendLine($"Payam Safety Margin: {payamConfig.SafetyMarginMs} ms");
                 sb.AppendLine($"Click Interval: {clickInterval} ms");
                 sb.AppendLine($"Key Pattern: F12, Tab, Space between each F12");
                 sb.AppendLine($"Total Duration for {clickTimes.Count} key presses: {totalDuration:F3} ms");
@@ -931,10 +1154,10 @@ namespace AutoClickUI
         private void InitializeComponent()
         {
             // Form Settings
-            this.Text = "PayamAutoClick v2.2";
+            this.Text = "PayamAutoClick v2.3";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
 
-            this.Size = new Size(600, 500);
+            this.Size = new Size(600, 560);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -951,27 +1174,29 @@ namespace AutoClickUI
             gbStatus = new GroupBox();
             gbStatus.Text = "Status";
             gbStatus.Location = new Point(10, 10);
-            gbStatus.Size = new Size(550, 150);
+            gbStatus.Size = new Size(550, 175);
 
             lblLiveTime = new Label { Location = new Point(10, 25), Size = new Size(530, 20), Text = "Live Time: Starting..." };
             lblTargetTime = new Label { Location = new Point(10, 50), Size = new Size(530, 20), Text = "Target Time: Not set" };
             lblProcessStatus = new Label { Location = new Point(10, 75), Size = new Size(530, 20), Text = "Target Process: Not set" };
             lblClickCount = new Label { Location = new Point(10, 100), Size = new Size(530, 20), Text = "Click Count: 1" };
             lblConfigStatus = new Label { Location = new Point(10, 125), Size = new Size(530, 20), Text = "Config Status: Not Set" };
+            lblPayamStatus = new Label { Location = new Point(10, 150), Size = new Size(530, 20), Text = "Payam Sync: (starting...)" };
 
             gbStatus.Controls.Add(lblLiveTime);
             gbStatus.Controls.Add(lblTargetTime);
             gbStatus.Controls.Add(lblProcessStatus);
             gbStatus.Controls.Add(lblClickCount);
             gbStatus.Controls.Add(lblConfigStatus);
+            gbStatus.Controls.Add(lblPayamStatus);
 
             tabMain.Controls.Add(gbStatus);
 
             // Actions Group
             gbActions = new GroupBox();
             gbActions.Text = "Actions";
-            gbActions.Location = new Point(10, 170);
-            gbActions.Size = new Size(550, 250);
+            gbActions.Location = new Point(10, 195);
+            gbActions.Size = new Size(550, 270);
 
             Label lblSetDate = new Label { Text = "Target Date:", Location = new Point(10, 25), Size = new Size(100, 20) };
             dtpTargetDate = new DateTimePicker { Location = new Point(110, 25), Size = new Size(150, 20), Format = DateTimePickerFormat.Short, Value = DateTime.Today };
@@ -996,39 +1221,39 @@ namespace AutoClickUI
             Label lblInterval = new Label { Text = "Click Interval (ms):", Location = new Point(270, 85), Size = new Size(110, 20) };
             nudClickInterval = new NumericUpDown { Location = new Point(370, 85), Size = new Size(150, 20), Minimum = 0, Maximum = 60000, Value = 0, Enabled = false };
 
-            chkUseSystemTime = new CheckBox { Text = "Use System Time (No NTP)", Location = new Point(10, 115), Size = new Size(220, 20) };
-            chkUseSystemTime.CheckedChanged += (s, e) =>
+            Label lblTimeSource = new Label { Text = "Time Source:", Location = new Point(10, 115), Size = new Size(100, 20) };
+            cmbTimeSource = new ComboBox
             {
-                useSystemTime = chkUseSystemTime.Checked;
-                txtNtpServer.Enabled = !useSystemTime;
-                btnSyncNtp.Enabled = !useSystemTime;
-
-                if (useSystemTime)
+                Location = new Point(110, 115),
+                Size = new Size(260, 21),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cmbTimeSource.Items.Add("Payam API Time");
+            cmbTimeSource.Items.Add("NTP");
+            cmbTimeSource.Items.Add("System Time");
+            cmbTimeSource.SelectedIndex = 0; // Payam API default
+            cmbTimeSource.SelectedIndexChanged += (s, e) =>
+            {
+                TimeSourceMode mode;
+                switch (cmbTimeSource.SelectedIndex)
                 {
-                    LogMessage("Using system time (NTP disabled).", Color.Orange);
-                    UI(() =>
-                    {
-                        lblNtpStatus.Text = "NTP Status: Disabled";
-                        lblNtpStatus.ForeColor = Color.Orange;
-                    });
+                    case 1: mode = TimeSourceMode.Ntp; break;
+                    case 2: mode = TimeSourceMode.System; break;
+                    default: mode = TimeSourceMode.PayamApi; break;
                 }
-                else
-                {
-                    LogMessage("Using NTP time.", Color.Blue);
-                    ThreadPool.QueueUserWorkItem(_ => SyncWithNtpServer());
-                }
+                SetTimeSourceMode(mode, syncNow: true);
             };
 
-            btnReadConfig = new Button { Text = "Read Config", Location = new Point(10, 145), Size = new Size(260, 30) };
+            btnReadConfig = new Button { Text = "Read Config", Location = new Point(10, 155), Size = new Size(260, 30) };
             btnReadConfig.Click += BtnReadConfig_Click;
 
-            btnManualConfig = new Button { Text = "Use Manual Settings", Location = new Point(280, 145), Size = new Size(260, 30) };
+            btnManualConfig = new Button { Text = "Use Manual Settings", Location = new Point(280, 155), Size = new Size(260, 30) };
             btnManualConfig.Click += BtnManualConfig_Click;
 
-            btnStart = new Button { Text = "Start", Location = new Point(10, 185), Size = new Size(260, 30) };
+            btnStart = new Button { Text = "Start", Location = new Point(10, 200), Size = new Size(260, 30) };
             btnStart.Click += BtnStart_Click;
 
-            btnStop = new Button { Text = "Stop", Location = new Point(280, 185), Size = new Size(260, 30), Enabled = false };
+            btnStop = new Button { Text = "Stop", Location = new Point(280, 200), Size = new Size(260, 30), Enabled = false };
             btnStop.Click += BtnStop_Click;
 
             gbActions.Controls.Add(lblSetDate);
@@ -1043,7 +1268,8 @@ namespace AutoClickUI
             gbActions.Controls.Add(nudClickCount);
             gbActions.Controls.Add(lblInterval);
             gbActions.Controls.Add(nudClickInterval);
-            gbActions.Controls.Add(chkUseSystemTime);
+            gbActions.Controls.Add(lblTimeSource);
+            gbActions.Controls.Add(cmbTimeSource);
             gbActions.Controls.Add(btnReadConfig);
             gbActions.Controls.Add(btnManualConfig);
             gbActions.Controls.Add(btnStart);
@@ -1052,7 +1278,7 @@ namespace AutoClickUI
             tabMain.Controls.Add(gbActions);
 
             // Settings tab
-            gbSettings = new GroupBox { Text = "Settings", Location = new Point(10, 10), Size = new Size(550, 150) };
+            gbSettings = new GroupBox { Text = "Folders / NTP", Location = new Point(10, 10), Size = new Size(550, 150) };
 
             Label lblConfigFolder = new Label { Text = "Config Folder:", Location = new Point(10, 25), Size = new Size(100, 20) };
             txtConfigFolder = new TextBox { Location = new Point(110, 25), Size = new Size(350, 20), Text = configFolder };
@@ -1090,9 +1316,9 @@ namespace AutoClickUI
             };
 
             Label lblNtpSrv = new Label { Text = "NTP Server:", Location = new Point(10, 85), Size = new Size(100, 20) };
-            txtNtpServer = new TextBox { Location = new Point(110, 85), Size = new Size(430, 20), Text = ntpServer };
+            txtNtpServer = new TextBox { Location = new Point(110, 85), Size = new Size(280, 20), Text = ntpServer, Enabled = false };
 
-            btnSyncNtp = new Button { Text = "Sync NTP", Location = new Point(400, 110), Size = new Size(140, 25) };
+            btnSyncNtp = new Button { Text = "Sync NTP", Location = new Point(400, 85), Size = new Size(140, 25), Enabled = false };
             btnSyncNtp.Click += (s, e) =>
             {
                 var server = SafeGetText(txtNtpServer);
@@ -1114,7 +1340,7 @@ namespace AutoClickUI
                 ThreadPool.QueueUserWorkItem(_ => SyncWithNtpServer());
             };
 
-            lblNtpStatus = new Label { Location = new Point(10, 115), Size = new Size(530, 20), Text = "NTP Status: (not synced)" };
+            lblNtpStatus = new Label { Location = new Point(10, 115), Size = new Size(530, 20), Text = "NTP Status: Idle (Payam mode)" };
 
             gbSettings.Controls.Add(lblConfigFolder);
             gbSettings.Controls.Add(txtConfigFolder);
@@ -1128,6 +1354,77 @@ namespace AutoClickUI
             gbSettings.Controls.Add(lblNtpStatus);
 
             tabSettings.Controls.Add(gbSettings);
+
+            // Payam API time settings
+            gbPayamTime = new GroupBox { Text = "Payam API Time", Location = new Point(10, 170), Size = new Size(550, 175) };
+
+            Label lblPayamUrl = new Label { Text = "API URL:", Location = new Point(10, 25), Size = new Size(100, 20) };
+            txtPayamApiUrl = new TextBox
+            {
+                Location = new Point(110, 25),
+                Size = new Size(430, 20),
+                Text = PayamTimeConfig.DefaultApiUrl
+            };
+
+            Label lblYearCode = new Label { Text = "YearCode:", Location = new Point(10, 55), Size = new Size(100, 20) };
+            txtPayamYearCode = new TextBox
+            {
+                Location = new Point(110, 55),
+                Size = new Size(150, 20),
+                Text = PayamTimeConfig.DefaultYearCode
+            };
+
+            Label lblToken = new Label { Text = "X-Content-Type-Options:", Location = new Point(270, 55), Size = new Size(140, 20) };
+            txtPayamContentTypeOptions = new TextBox
+            {
+                Location = new Point(410, 55),
+                Size = new Size(130, 20),
+                Text = PayamTimeConfig.DefaultContentTypeOptions
+            };
+
+            Label lblMargin = new Label { Text = "Safety Margin (ms):", Location = new Point(10, 85), Size = new Size(120, 20) };
+            nudSafetyMargin = new NumericUpDown
+            {
+                Location = new Point(130, 85),
+                Size = new Size(80, 20),
+                Minimum = 0,
+                Maximum = 500,
+                Value = PayamTimeConfig.DefaultSafetyMarginMs
+            };
+            Label lblMarginHint = new Label
+            {
+                Text = "F12 never fires early vs Payam (+0..50 typical)",
+                Location = new Point(220, 87),
+                Size = new Size(310, 20)
+            };
+
+            btnSavePayamConfig = new Button { Text = "Save Payam Config", Location = new Point(10, 120), Size = new Size(160, 30) };
+            btnSavePayamConfig.Click += (s, e) => SavePayamConfigFromUi();
+
+            btnSyncPayam = new Button { Text = "Apply / Resync Payam", Location = new Point(180, 120), Size = new Size(160, 30) };
+            btnSyncPayam.Click += (s, e) =>
+            {
+                SavePayamConfigFromUi();
+                if (timeSourceMode != TimeSourceMode.PayamApi)
+                    SetTimeSourceMode(TimeSourceMode.PayamApi, syncNow: true);
+                else
+                    EnsurePayamProviderStarted();
+                LogMessage("Payam config applied; waiting for next second-edge phase lock.", Color.Blue);
+            };
+
+            gbPayamTime.Controls.Add(lblPayamUrl);
+            gbPayamTime.Controls.Add(txtPayamApiUrl);
+            gbPayamTime.Controls.Add(lblYearCode);
+            gbPayamTime.Controls.Add(txtPayamYearCode);
+            gbPayamTime.Controls.Add(lblToken);
+            gbPayamTime.Controls.Add(txtPayamContentTypeOptions);
+            gbPayamTime.Controls.Add(lblMargin);
+            gbPayamTime.Controls.Add(nudSafetyMargin);
+            gbPayamTime.Controls.Add(lblMarginHint);
+            gbPayamTime.Controls.Add(btnSavePayamConfig);
+            gbPayamTime.Controls.Add(btnSyncPayam);
+
+            tabSettings.Controls.Add(gbPayamTime);
 
             // Logs tab
             rtbLogs = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.White, Font = new Font("Consolas", 9F) };
@@ -1150,6 +1447,8 @@ namespace AutoClickUI
             // start live time thread
             liveTimeThread = new Thread(DisplayLiveTime) { IsBackground = true };
             liveTimeThread.Start();
+
+            UpdateTimeSourceUiEnabled();
         }
 
         // -------------------------
@@ -1352,11 +1651,35 @@ namespace AutoClickUI
         {
             try
             {
-                var now = GetCurrentTime();
-                if (targetTime <= now)
+                if (timeSourceMode == TimeSourceMode.PayamApi)
                 {
-                    MessageBox.Show("Target time must be in the future!", "Invalid Time", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    LogMessage("Cannot start: Target time must be in the future!", Color.Red);
+                    // Keep UI values applied for margin/token before arming.
+                    string cfgError;
+                    if (!TryReadPayamConfigFromUi(out cfgError))
+                    {
+                        MessageBox.Show(cfgError, "Payam Config", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    EnsurePayamProviderStarted();
+
+                    if (payamTimeProvider == null || !payamTimeProvider.HasPhaseLock)
+                    {
+                        var proceed = MessageBox.Show(
+                            "Payam time is not phase-locked yet (still waiting for a second-edge sync).\n\nContinue anyway?",
+                            "Payam Sync",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning);
+                        if (proceed != DialogResult.Yes)
+                            return;
+                    }
+                }
+
+                var now = GetCurrentTime();
+                var fireAt = GetFireThreshold();
+                if (fireAt <= now)
+                {
+                    MessageBox.Show("Target time (including safety margin) must be in the future!", "Invalid Time", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    LogMessage("Cannot start: fire threshold must be in the future!", Color.Red);
                     return;
                 }
 
@@ -1382,7 +1705,9 @@ namespace AutoClickUI
                     statusLabel.Text = "Waiting for target time...";
                 });
 
-                LogMessage($"Waiting for target time: {targetTime:yyyy/MM/dd HH:mm:ss.fff}", Color.Blue);
+                LogMessage($"Waiting for target time: {targetTime:yyyy/MM/dd HH:mm:ss.fff} via {DescribeTimeSourceForLog()}", Color.Blue);
+                if (timeSourceMode == TimeSourceMode.PayamApi)
+                    LogMessage($"Payam fire threshold: {fireAt:yyyy/MM/dd HH:mm:ss.fff} (safety +{payamConfig.SafetyMarginMs} ms)", Color.Blue);
             }
             catch (Exception ex)
             {
@@ -1442,14 +1767,27 @@ namespace AutoClickUI
                     }
 
                     var now = GetCurrentTime();
+                    string source = GetTimeSourceLabel();
+                    string payamStatus = payamTimeProvider != null ? payamTimeProvider.Status : "Payam Sync: (off)";
+                    bool payamOk = payamTimeProvider != null && payamTimeProvider.HasPhaseLock;
+
                     UI(() =>
                     {
-                        string source = useSystemTime || !hasNtpSync ? "(System)" : $"(NTP: {ntpServer})";
                         lblLiveTime.Text = $"Live Time: {now:yyyy/MM/dd HH:mm:ss.fff} {source}";
+
+                        if (lblPayamStatus != null)
+                        {
+                            lblPayamStatus.Text = payamStatus.StartsWith("Payam", StringComparison.OrdinalIgnoreCase)
+                                ? payamStatus
+                                : "Payam Sync: " + payamStatus;
+                            lblPayamStatus.ForeColor = payamOk
+                                ? Color.Green
+                                : (payamTimeProvider != null && payamTimeProvider.HasSync ? Color.DarkOrange : Color.Gray);
+                        }
 
                         if (hasStarted && isWaiting)
                         {
-                            var rem = targetTime - now;
+                            var rem = GetFireThreshold() - now;
                             if (rem.TotalMilliseconds > 0)
                             {
                                 string fmt = rem.TotalHours >= 1
@@ -1468,6 +1806,21 @@ namespace AutoClickUI
                 {
                     break;
                 }
+            }
+        }
+
+        private string DescribeTimeSourceForLog()
+        {
+            switch (timeSourceMode)
+            {
+                case TimeSourceMode.System:
+                    return "System";
+                case TimeSourceMode.Ntp:
+                    return "NTP (" + ntpServer + ")";
+                case TimeSourceMode.PayamApi:
+                default:
+                    string url = payamConfig != null ? payamConfig.ApiUrl : PayamTimeConfig.DefaultApiUrl;
+                    return "Payam API (" + url + ")";
             }
         }
     }

@@ -1,0 +1,20 @@
+## Build outputs
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Certificates / signing keys
+*.pfx
+*.p12
+*.key
+
+## Publish / ClickOnce leftovers
+*.application
+*.exe.manifest
+app.publish/

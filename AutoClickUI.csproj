@@ -58,7 +58,8 @@
     <GenerateManifests>true</GenerateManifests>
   </PropertyGroup>
   <PropertyGroup>
-    <SignManifests>true</SignManifests>
+    <SignManifests Condition="Exists('AutoClickUI_TemporaryKey.pfx')">true</SignManifests>
+    <SignManifests Condition="!Exists('AutoClickUI_TemporaryKey.pfx')">false</SignManifests>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>icon-2.ico</ApplicationIcon>
@@ -80,6 +81,9 @@
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="PayamTimeConfig.cs" />
+    <Compile Include="PayamTimeProvider.cs" />
+    <Compile Include="TimeSourceMode.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Content Include="icon-2.ico" />
@@ -92,9 +96,9 @@
       <SubType>Designer</SubType>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
-    <Content Include="AutoClickUI_TemporaryKey.pfx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <None Include="AutoClickUI_TemporaryKey.pfx" Condition="Exists('AutoClickUI_TemporaryKey.pfx')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
