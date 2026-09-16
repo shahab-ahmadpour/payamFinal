@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace AutoClickUI
@@ -10,7 +11,7 @@ namespace AutoClickUI
         public static readonly Color Bg = Color.FromArgb(15, 20, 25);
         public static readonly Color Surface = Color.FromArgb(26, 35, 50);
         public static readonly Color SurfaceAlt = Color.FromArgb(32, 44, 62);
-        public static readonly Color Border = Color.FromArgb(48, 64, 88);
+        public static readonly Color Border = Color.FromArgb(58, 78, 105);
         public static readonly Color TextPrimary = Color.FromArgb(232, 240, 248);
         public static readonly Color TextMuted = Color.FromArgb(148, 163, 184);
         public static readonly Color Accent = Color.FromArgb(45, 212, 191);
@@ -29,17 +30,17 @@ namespace AutoClickUI
 
         public static Font BrandFont
         {
-            get { return new Font("Segoe UI Semibold", 14F, FontStyle.Bold); }
+            get { return new Font("Segoe UI Semibold", 13F, FontStyle.Bold); }
         }
 
         public static Font HeroFont
         {
-            get { return new Font("Consolas", 36F, FontStyle.Bold); }
+            get { return new Font("Consolas", 42F, FontStyle.Bold); }
         }
 
         public static Font MonoFont
         {
-            get { return new Font("Consolas", 11F, FontStyle.Regular); }
+            get { return new Font("Consolas", 10.5F, FontStyle.Regular); }
         }
 
         public static Font UiFont
@@ -54,7 +55,7 @@ namespace AutoClickUI
 
         public static Font CaptionFont
         {
-            get { return new Font("Segoe UI", 8.25F, FontStyle.Regular); }
+            get { return new Font("Segoe UI", 8F, FontStyle.Regular); }
         }
 
         public static void StyleForm(Form form)
@@ -66,7 +67,8 @@ namespace AutoClickUI
 
         public static void StyleLabel(Label lbl, bool muted = false, bool mono = false)
         {
-            lbl.BackColor = Color.Transparent;
+            // Opaque surface color — Transparent labels clip/corrupt large glyphs on custom panels.
+            lbl.BackColor = Surface;
             lbl.ForeColor = muted ? TextMuted : TextPrimary;
             lbl.Font = mono ? MonoFont : UiFont;
         }
@@ -97,12 +99,9 @@ namespace AutoClickUI
 
         public static void StyleDateTimePicker(DateTimePicker dtp)
         {
-            dtp.CalendarMonthBackground = Surface;
-            dtp.CalendarForeColor = TextPrimary;
-            dtp.CalendarTitleBackColor = SurfaceAlt;
-            dtp.CalendarTitleForeColor = TextPrimary;
-            dtp.CalendarTrailingForeColor = TextMuted;
+            // Keep system chrome — custom calendar colors break the dropdown button layout.
             dtp.Font = UiFont;
+            dtp.CalendarFont = UiFont;
         }
 
         public static void StyleRichText(RichTextBox rtb)
@@ -161,60 +160,96 @@ namespace AutoClickUI
         }
     }
 
-    /// <summary>Rounded dark surface panel with subtle border.</summary>
+    /// <summary>Solid surface card — paints background via BackColor so child controls never clip.</summary>
     internal sealed class SurfacePanel : Panel
     {
-        public int CornerRadius { get; set; }
-        public Color SurfaceColor { get; set; }
         public Color BorderColor { get; set; }
         public string Title { get; set; }
+        public int ContentTop
+        {
+            get { return string.IsNullOrEmpty(Title) ? 12 : 34; }
+        }
 
         public SurfacePanel()
         {
-            CornerRadius = 12;
-            SurfaceColor = AppTheme.Surface;
             BorderColor = AppTheme.Border;
             Title = null;
             DoubleBuffered = true;
-            BackColor = AppTheme.Bg;
-            Padding = new Padding(14, 18, 14, 14);
+            BackColor = AppTheme.Surface;
+            Padding = new Padding(16, 36, 16, 14);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            UpdateStyles();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            using (var b = new SolidBrush(BackColor))
+                e.Graphics.FillRectangle(b, ClientRectangle);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
             Rectangle rect = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (var path = RoundRect(rect, CornerRadius))
-            using (var fill = new SolidBrush(SurfaceColor))
             using (var pen = new Pen(BorderColor))
-            {
-                e.Graphics.FillPath(fill, path);
-                e.Graphics.DrawPath(pen, path);
-            }
+                e.Graphics.DrawRectangle(pen, rect);
 
             if (!string.IsNullOrEmpty(Title))
             {
                 using (var font = AppTheme.CaptionFont)
                 using (var brush = new SolidBrush(AppTheme.TextMuted))
-                    e.Graphics.DrawString(Title.ToUpperInvariant(), font, brush, 16, 8);
+                    e.Graphics.DrawString(Title.ToUpperInvariant(), font, brush, 16, 10);
+            }
+        }
+    }
+
+    /// <summary>Large monospace clock drawn with GDI+ (avoids WinForms Label glyph clipping).</summary>
+    internal sealed class HeroClockLabel : Control
+    {
+        private string _value = "--:--:--.---";
+
+        public HeroClockLabel()
+        {
+            DoubleBuffered = true;
+            BackColor = AppTheme.Surface;
+            ForeColor = AppTheme.Accent;
+            Font = AppTheme.HeroFont;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            UpdateStyles();
+        }
+
+        public override string Text
+        {
+            get { return _value; }
+            set
+            {
+                string v = value ?? string.Empty;
+                if (_value == v) return;
+                _value = v;
+                Invalidate();
             }
         }
 
-        private static GraphicsPath RoundRect(Rectangle bounds, int radius)
+        protected override void OnPaint(PaintEventArgs e)
         {
-            int d = radius * 2;
-            var path = new GraphicsPath();
-            if (radius <= 0)
+            e.Graphics.Clear(BackColor);
+            e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using (var brush = new SolidBrush(ForeColor))
+            using (var format = new StringFormat
             {
-                path.AddRectangle(bounds);
-                return path;
+                Alignment = StringAlignment.Near,
+                LineAlignment = StringAlignment.Center,
+                FormatFlags = StringFormatFlags.NoWrap
+            })
+            {
+                // Inset so glyph overhang never clips.
+                RectangleF layout = new RectangleF(4, 4, Width - 8, Height - 8);
+                e.Graphics.DrawString(_value, Font, brush, layout, format);
             }
-            path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
-            path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
-            path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
-            path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
-            path.CloseFigure();
-            return path;
         }
     }
 
@@ -287,9 +322,11 @@ namespace AutoClickUI
 
         public ThinProgressBar()
         {
-            Height = 6;
+            Height = 8;
             DoubleBuffered = true;
+            BackColor = AppTheme.Surface;
             _value = 0;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
         }
 
         public double Progress
@@ -309,31 +346,15 @@ namespace AutoClickUI
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle track = new Rectangle(0, 0, Width - 1, Height - 1);
             using (var bg = new SolidBrush(AppTheme.SurfaceAlt))
-            using (var path = RoundRect(track, Height / 2))
-                e.Graphics.FillPath(bg, path);
+                e.Graphics.FillRectangle(bg, 0, 0, Width, Height);
 
-            int w = (int)System.Math.Round((Width - 1) * _value);
-            if (w > 1)
+            int w = (int)System.Math.Round(Width * _value);
+            if (w > 0)
             {
-                Rectangle fill = new Rectangle(0, 0, w, Height - 1);
-                using (var brush = new LinearGradientBrush(fill, AppTheme.Accent, AppTheme.Success, LinearGradientMode.Horizontal))
-                using (var path = RoundRect(fill, Height / 2))
-                    e.Graphics.FillPath(brush, path);
+                using (var brush = new SolidBrush(AppTheme.Accent))
+                    e.Graphics.FillRectangle(brush, 0, 0, w, Height);
             }
-        }
-
-        private static GraphicsPath RoundRect(Rectangle bounds, int radius)
-        {
-            int d = System.Math.Max(1, radius * 2);
-            var path = new GraphicsPath();
-            path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
-            path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
-            path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
-            path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
-            path.CloseFigure();
-            return path;
         }
     }
 
@@ -350,7 +371,7 @@ namespace AutoClickUI
             Font = AppTheme.UiFontBold;
             Height = 32;
             ForeColor = AppTheme.TextMuted;
-            BackColor = Color.Transparent;
+            BackColor = AppTheme.Surface;
             FlatAppearance.MouseOverBackColor = AppTheme.SurfaceAlt;
             FlatAppearance.MouseDownBackColor = AppTheme.SurfaceAlt;
         }
@@ -365,11 +386,14 @@ namespace AutoClickUI
                 {
                     BackColor = AppTheme.SurfaceAlt;
                     ForeColor = AppTheme.Accent;
+                    FlatAppearance.BorderSize = 1;
+                    FlatAppearance.BorderColor = AppTheme.AccentDim;
                 }
                 else
                 {
-                    BackColor = Color.Transparent;
+                    BackColor = AppTheme.Surface;
                     ForeColor = AppTheme.TextMuted;
+                    FlatAppearance.BorderSize = 0;
                 }
             }
         }

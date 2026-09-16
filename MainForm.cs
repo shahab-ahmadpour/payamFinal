@@ -132,7 +132,7 @@ namespace AutoClickUI
         // UI Controls
         // -------------------------
         private Label lblLiveTime;
-        private Label lblHeroClock;
+        private HeroClockLabel lblHeroClock;
         private Label lblHeroMeta;
         private Label lblCountdown;
         private Label lblTargetTime;
@@ -1345,8 +1345,8 @@ namespace AutoClickUI
         {
             this.Text = "Payam AutoClick — Precision Console";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
-            this.Size = new Size(760, 780);
-            this.MinimumSize = new Size(720, 720);
+            this.Size = new Size(820, 860);
+            this.MinimumSize = new Size(780, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -1380,9 +1380,9 @@ namespace AutoClickUI
                 BackColor = Color.Transparent
             };
 
-            btnNavConsole = new NavButton { Text = "Console", Location = new Point(430, 16), Size = new Size(90, 32), Active = true };
-            btnNavSettings = new NavButton { Text = "Settings", Location = new Point(528, 16), Size = new Size(90, 32) };
-            btnNavLogs = new NavButton { Text = "Logs", Location = new Point(626, 16), Size = new Size(90, 32) };
+            btnNavConsole = new NavButton { Text = "Console", Location = new Point(490, 16), Size = new Size(90, 32), Active = true };
+            btnNavSettings = new NavButton { Text = "Settings", Location = new Point(588, 16), Size = new Size(90, 32) };
+            btnNavLogs = new NavButton { Text = "Logs", Location = new Point(686, 16), Size = new Size(90, 32) };
             btnNavConsole.Click += (s, e) => ShowSection(0);
             btnNavSettings.Click += (s, e) => ShowSection(1);
             btnNavLogs.Click += (s, e) => ShowSection(2);
@@ -1452,91 +1452,85 @@ namespace AutoClickUI
 
         private void BuildConsoleSection()
         {
+            int contentW = 768;
+
             panelHero = new SurfacePanel
             {
                 Location = new Point(0, 0),
-                Size = new Size(708, 168),
+                Size = new Size(contentW, 200),
                 Title = "Live Payam Time"
             };
 
-            lblHeroClock = new Label
+            lblHeroClock = new HeroClockLabel
             {
                 Text = "--:--:--.---",
-                Location = new Point(20, 36),
-                Size = new Size(660, 58),
-                Font = AppTheme.HeroFont,
-                ForeColor = AppTheme.Accent,
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft
+                Location = new Point(18, 36),
+                Size = new Size(680, 72)
+            };
+
+            lblSyncDot = new Label
+            {
+                Text = "●",
+                Location = new Point(710, 52),
+                Size = new Size(36, 36),
+                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
+                ForeColor = AppTheme.TextMuted,
+                BackColor = AppTheme.Surface,
+                TextAlign = ContentAlignment.MiddleCenter
             };
 
             lblHeroMeta = new Label
             {
                 Text = "Source: starting…",
-                Location = new Point(24, 100),
-                Size = new Size(400, 20)
+                Location = new Point(22, 116),
+                Size = new Size(520, 20)
             };
             AppTheme.StyleLabel(lblHeroMeta, muted: true, mono: true);
-
-            lblSyncDot = new Label
-            {
-                Text = "●",
-                Location = new Point(640, 42),
-                Size = new Size(40, 40),
-                Font = new Font("Segoe UI", 18F, FontStyle.Bold),
-                ForeColor = AppTheme.TextMuted,
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleCenter
-            };
 
             lblCountdown = new Label
             {
                 Text = "Remaining  —",
-                Location = new Point(24, 124),
-                Size = new Size(400, 22),
+                Location = new Point(22, 142),
+                Size = new Size(520, 22),
                 Font = AppTheme.UiFontBold,
                 ForeColor = AppTheme.TextPrimary,
-                BackColor = Color.Transparent
+                BackColor = AppTheme.Surface
             };
 
             progressCountdown = new ThinProgressBar
             {
-                Location = new Point(24, 150),
-                Size = new Size(660, 6),
+                Location = new Point(22, 172),
+                Size = new Size(724, 8),
                 Progress = 0
             };
 
             lblLiveTime = new Label { Visible = false, Size = new Size(1, 1) };
 
             panelHero.Controls.Add(lblHeroClock);
-            panelHero.Controls.Add(lblHeroMeta);
             panelHero.Controls.Add(lblSyncDot);
+            panelHero.Controls.Add(lblHeroMeta);
             panelHero.Controls.Add(lblCountdown);
             panelHero.Controls.Add(progressCountdown);
             panelHero.Controls.Add(lblLiveTime);
 
             panelStatusChips = new SurfacePanel
             {
-                Location = new Point(0, 180),
-                Size = new Size(708, 78),
+                Location = new Point(0, 214),
+                Size = new Size(contentW, 96),
                 Title = "Status"
             };
 
-            lblTargetTime = new Label { Location = new Point(20, 28), Size = new Size(340, 18), Text = "Target  ·  Not set" };
-            lblProcessStatus = new Label { Location = new Point(370, 28), Size = new Size(310, 18), Text = "Process  ·  —" };
-            lblClickCount = new Label { Location = new Point(20, 50), Size = new Size(200, 18), Text = "Clicks  ·  1" };
-            lblConfigStatus = new Label { Location = new Point(230, 50), Size = new Size(220, 18), Text = "Config  ·  Not set" };
-            lblPayamStatus = new Label { Location = new Point(460, 50), Size = new Size(220, 18), Text = "Sync  ·  starting…" };
+            lblTargetTime = new Label { Location = new Point(18, 36), Size = new Size(360, 20), Text = "Target  ·  Not set" };
+            lblProcessStatus = new Label { Location = new Point(390, 36), Size = new Size(350, 20), Text = "Process  ·  —" };
+            lblClickCount = new Label { Location = new Point(18, 62), Size = new Size(170, 20), Text = "Clicks  ·  1" };
+            lblConfigStatus = new Label { Location = new Point(200, 62), Size = new Size(240, 20), Text = "Config  ·  Not set" };
+            lblPayamStatus = new Label { Location = new Point(450, 62), Size = new Size(290, 20), Text = "Sync  ·  starting…" };
+
             AppTheme.StyleLabel(lblTargetTime, mono: true);
             AppTheme.StyleLabel(lblProcessStatus, muted: true);
             AppTheme.StyleLabel(lblClickCount, muted: true);
             AppTheme.StyleLabel(lblConfigStatus, muted: true);
             AppTheme.StyleLabel(lblPayamStatus, muted: true);
-            lblPayamStatus.Font = AppTheme.CaptionFont;
-            lblConfigStatus.Font = AppTheme.CaptionFont;
-            lblClickCount.Font = AppTheme.CaptionFont;
-            lblProcessStatus.Font = AppTheme.CaptionFont;
-            lblTargetTime.Font = AppTheme.CaptionFont;
 
             panelStatusChips.Controls.Add(lblTargetTime);
             panelStatusChips.Controls.Add(lblProcessStatus);
@@ -1546,57 +1540,68 @@ namespace AutoClickUI
 
             panelArm = new SurfacePanel
             {
-                Location = new Point(0, 270),
-                Size = new Size(708, 390),
+                Location = new Point(0, 324),
+                Size = new Size(contentW, 400),
                 Title = "Arm"
             };
 
-            panelArm.Controls.Add(MakeCaption("TARGET DATE", 20, 28));
+            int y1 = 36;
+            int y1c = 56;
+            int y2 = 100;
+            int y2c = 120;
+            int col1 = 18;
+            int col2 = 210;
+            int col3 = 402;
+            int col4 = 594;
+            int fieldH = 26;
+            int fieldW = 170;
+
+            panelArm.Controls.Add(MakeCaption("TARGET DATE", col1, y1));
             dtpTargetDate = new DateTimePicker
             {
-                Location = new Point(20, 48),
-                Size = new Size(160, 24),
+                Location = new Point(col1, y1c),
+                Size = new Size(fieldW, fieldH),
                 Format = DateTimePickerFormat.Short,
                 Value = DateTime.Today
             };
             AppTheme.StyleDateTimePicker(dtpTargetDate);
 
-            panelArm.Controls.Add(MakeCaption("TARGET TIME", 200, 28));
+            panelArm.Controls.Add(MakeCaption("TARGET TIME", col2, y1));
             dtpTargetTime = new DateTimePicker
             {
-                Location = new Point(200, 48),
-                Size = new Size(160, 24),
+                Location = new Point(col2, y1c),
+                Size = new Size(fieldW, fieldH),
                 Format = DateTimePickerFormat.Time,
                 ShowUpDown = true,
                 Value = DateTime.Now.AddMinutes(1)
             };
             AppTheme.StyleDateTimePicker(dtpTargetTime);
 
-            panelArm.Controls.Add(MakeCaption("MILLISECONDS", 380, 28));
+            panelArm.Controls.Add(MakeCaption("MILLISECONDS", col3, y1));
             nudMilliseconds = new NumericUpDown
             {
-                Location = new Point(380, 48),
-                Size = new Size(120, 24),
+                Location = new Point(col3, y1c),
+                Size = new Size(fieldW, fieldH),
                 Minimum = 0,
                 Maximum = 999,
                 Value = 0
             };
             AppTheme.StyleNumeric(nudMilliseconds);
 
-            panelArm.Controls.Add(MakeCaption("PROCESS", 520, 28));
+            panelArm.Controls.Add(MakeCaption("PROCESS", col4, y1));
             txtTargetProcess = new TextBox
             {
-                Location = new Point(520, 48),
-                Size = new Size(160, 24),
+                Location = new Point(col4, y1c),
+                Size = new Size(fieldW, fieldH),
                 Text = "Payam"
             };
             AppTheme.StyleTextBox(txtTargetProcess);
 
-            panelArm.Controls.Add(MakeCaption("CLICK COUNT", 20, 88));
+            panelArm.Controls.Add(MakeCaption("CLICK COUNT", col1, y2));
             nudClickCount = new NumericUpDown
             {
-                Location = new Point(20, 108),
-                Size = new Size(120, 24),
+                Location = new Point(col1, y2c),
+                Size = new Size(fieldW, fieldH),
                 Minimum = 1,
                 Maximum = 500,
                 Value = 1
@@ -1609,11 +1614,11 @@ namespace AutoClickUI
                 lblClickCount.Text = "Clicks  ·  " + ((int)nudClickCount.Value).ToString();
             };
 
-            panelArm.Controls.Add(MakeCaption("CLICK INTERVAL (MS)", 160, 88, 160));
+            panelArm.Controls.Add(MakeCaption("CLICK INTERVAL (MS)", col2, y2, 160));
             nudClickInterval = new NumericUpDown
             {
-                Location = new Point(160, 108),
-                Size = new Size(140, 24),
+                Location = new Point(col2, y2c),
+                Size = new Size(fieldW, fieldH),
                 Minimum = 0,
                 Maximum = 60000,
                 Value = 0,
@@ -1621,11 +1626,11 @@ namespace AutoClickUI
             };
             AppTheme.StyleNumeric(nudClickInterval);
 
-            panelArm.Controls.Add(MakeCaption("TIME SOURCE", 320, 88, 160));
+            panelArm.Controls.Add(MakeCaption("TIME SOURCE", col3, y2, 160));
             cmbTimeSource = new ComboBox
             {
-                Location = new Point(320, 108),
-                Size = new Size(200, 24),
+                Location = new Point(col3, y2c),
+                Size = new Size(fieldW + 20, fieldH),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             AppTheme.StyleCombo(cmbTimeSource);
@@ -1645,23 +1650,23 @@ namespace AutoClickUI
                 SetTimeSourceMode(mode, syncNow: true);
             };
 
-            var btnRead = new AccentButton { Text = "Read Config", Location = new Point(20, 160), Size = new Size(320, 40) };
+            var btnRead = new AccentButton { Text = "Read Config", Location = new Point(18, 172), Size = new Size(360, 40) };
             btnRead.SetSecondary();
             btnRead.Click += BtnReadConfig_Click;
             btnReadConfig = btnRead;
 
-            var btnManual = new AccentButton { Text = "Use Manual Settings", Location = new Point(360, 160), Size = new Size(320, 40) };
+            var btnManual = new AccentButton { Text = "Use Manual Settings", Location = new Point(390, 172), Size = new Size(360, 40) };
             btnManual.SetSecondary();
             btnManual.Click += BtnManualConfig_Click;
             btnManualConfig = btnManual;
 
-            var start = new AccentButton { Text = "START", Location = new Point(20, 220), Size = new Size(430, 52) };
+            var start = new AccentButton { Text = "START", Location = new Point(18, 232), Size = new Size(500, 48) };
             start.SetAccent(AppTheme.Start, AppTheme.StartHover);
             start.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             start.Click += BtnStart_Click;
             btnStart = start;
 
-            var stop = new AccentButton { Text = "STOP", Location = new Point(470, 220), Size = new Size(210, 52), Enabled = false };
+            var stop = new AccentButton { Text = "STOP", Location = new Point(534, 232), Size = new Size(216, 48), Enabled = false };
             stop.SetAccent(AppTheme.StopEnabled, AppTheme.Danger);
             stop.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             stop.Click += BtnStop_Click;
@@ -1670,8 +1675,8 @@ namespace AutoClickUI
             var hint = new Label
             {
                 Text = "F12 fires on Payam clock + safety margin — never early.",
-                Location = new Point(20, 286),
-                Size = new Size(660, 20)
+                Location = new Point(18, 300),
+                Size = new Size(720, 20)
             };
             AppTheme.StyleLabel(hint, muted: true);
             hint.Font = AppTheme.CaptionFont;
