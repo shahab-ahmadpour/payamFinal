@@ -444,6 +444,18 @@ namespace AutoClickUI
             }
         }
 
+        /// <summary>Push Bias/Margin from UI into the live provider immediately.</summary>
+        private void ApplyLivePayamTimingFromUi()
+        {
+            if (payamConfig == null) return;
+            if (nudSafetyMargin != null)
+                payamConfig.SafetyMarginMs = (int)nudSafetyMargin.Value;
+            if (nudClockBias != null)
+                payamConfig.ClockBiasMs = (int)nudClockBias.Value;
+            if (payamTimeProvider != null)
+                payamTimeProvider.UpdateConfig(payamConfig);
+        }
+
         private void SetTimeSourceMode(TimeSourceMode mode, bool syncNow)
         {
             timeSourceMode = mode;
@@ -2496,7 +2508,12 @@ namespace AutoClickUI
                         if (lblLiveTime != null)
                             lblLiveTime.Text = $"Live Time: {now:yyyy/MM/dd HH:mm:ss.fff} {source}";
                         if (lblHeroMeta != null)
-                            lblHeroMeta.Text = now.ToString("yyyy/MM/dd") + "  " + source;
+                        {
+                            string biasNote = "";
+                            if (timeSourceMode == TimeSourceMode.PayamApi && payamConfig != null)
+                                biasNote = "  bias -" + payamConfig.ClockBiasMs + "ms";
+                            lblHeroMeta.Text = now.ToString("yyyy/MM/dd") + "  " + source + biasNote;
+                        }
 
                         if (lblSyncDot != null)
                         {
