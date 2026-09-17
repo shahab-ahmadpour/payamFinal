@@ -4,34 +4,36 @@ using System.Windows.Forms;
 
 namespace AutoClickUI
 {
-    /// <summary>Clean light theme — simple, readable, operator-friendly.</summary>
+    /// <summary>Clean light professional theme.</summary>
     internal static class AppTheme
     {
-        public static readonly Color Bg = Color.FromArgb(243, 244, 246);
+        public static readonly Color Bg = Color.FromArgb(245, 247, 250);
         public static readonly Color Surface = Color.White;
-        public static readonly Color SurfaceAlt = Color.FromArgb(249, 250, 251);
-        public static readonly Color Border = Color.FromArgb(209, 213, 219);
-        public static readonly Color TextPrimary = Color.FromArgb(17, 24, 39);
-        public static readonly Color TextMuted = Color.FromArgb(107, 114, 128);
-        public static readonly Color Accent = Color.FromArgb(13, 148, 136);
-        public static readonly Color AccentDim = Color.FromArgb(15, 118, 110);
-        public static readonly Color Success = Color.FromArgb(5, 150, 105);
+        public static readonly Color SurfaceAlt = Color.FromArgb(248, 250, 252);
+        public static readonly Color Border = Color.FromArgb(226, 232, 240);
+        public static readonly Color TextPrimary = Color.FromArgb(30, 41, 59);
+        public static readonly Color TextMuted = Color.FromArgb(100, 116, 139);
+        public static readonly Color Accent = Color.FromArgb(15, 118, 110);
+        public static readonly Color AccentSoft = Color.FromArgb(204, 251, 241);
+        public static readonly Color AccentDim = Color.FromArgb(13, 148, 136);
+        public static readonly Color Success = Color.FromArgb(22, 163, 74);
         public static readonly Color Warning = Color.FromArgb(217, 119, 6);
         public static readonly Color Danger = Color.FromArgb(220, 38, 38);
-        public static readonly Color Start = Color.FromArgb(5, 150, 105);
-        public static readonly Color StartHover = Color.FromArgb(4, 120, 87);
+        public static readonly Color Start = Color.FromArgb(22, 163, 74);
+        public static readonly Color StartHover = Color.FromArgb(21, 128, 61);
         public static readonly Color StopEnabled = Color.FromArgb(220, 38, 38);
         public static readonly Color LogInfo = Color.FromArgb(37, 99, 235);
-        public static readonly Color LogOk = Color.FromArgb(5, 150, 105);
+        public static readonly Color LogOk = Color.FromArgb(22, 163, 74);
         public static readonly Color LogWarn = Color.FromArgb(180, 83, 9);
         public static readonly Color LogErr = Color.FromArgb(185, 28, 28);
 
-        public static Font BrandFont { get { return new Font("Segoe UI Semibold", 13F, FontStyle.Bold); } }
-        public static Font HeroFont { get { return new Font("Consolas", 40F, FontStyle.Bold); } }
-        public static Font MonoFont { get { return new Font("Consolas", 10.5F, FontStyle.Regular); } }
+        public static Font BrandFont { get { return new Font("Segoe UI Semibold", 12.5F, FontStyle.Bold); } }
+        public static Font HeroFont { get { return new Font("Consolas", 36F, FontStyle.Bold); } }
+        public static Font MonoFont { get { return new Font("Consolas", 10F, FontStyle.Regular); } }
         public static Font UiFont { get { return new Font("Segoe UI", 9.25F, FontStyle.Regular); } }
         public static Font UiFontBold { get { return new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold); } }
         public static Font CaptionFont { get { return new Font("Segoe UI", 8.25F, FontStyle.Regular); } }
+        public static Font SectionFont { get { return new Font("Segoe UI Semibold", 9F, FontStyle.Bold); } }
 
         public static void StyleForm(Form form)
         {
@@ -42,7 +44,7 @@ namespace AutoClickUI
 
         public static void StyleLabel(Label lbl, bool muted = false, bool mono = false)
         {
-            lbl.BackColor = Surface;
+            lbl.BackColor = Color.Transparent;
             lbl.ForeColor = muted ? TextMuted : TextPrimary;
             lbl.Font = mono ? MonoFont : UiFont;
         }
@@ -81,7 +83,7 @@ namespace AutoClickUI
         {
             rtb.BackColor = Color.White;
             rtb.ForeColor = TextPrimary;
-            rtb.BorderStyle = BorderStyle.FixedSingle;
+            rtb.BorderStyle = BorderStyle.None;
             rtb.Font = new Font("Consolas", 9.25F);
         }
 
@@ -129,46 +131,59 @@ namespace AutoClickUI
         }
     }
 
-    internal sealed class SurfacePanel : Panel
+    /// <summary>White card with a real title label (layout-safe).</summary>
+    internal sealed class CardPanel : Panel
     {
-        public Color BorderColor { get; set; }
-        public string Title { get; set; }
+        private readonly Label _title;
+        private readonly Panel _body;
 
-        public SurfacePanel()
+        public Panel Body { get { return _body; } }
+
+        public CardPanel(string title)
         {
-            BorderColor = AppTheme.Border;
-            Title = null;
             DoubleBuffered = true;
             BackColor = AppTheme.Surface;
-            Padding = new Padding(14, 28, 14, 12);
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
-            UpdateStyles();
-        }
+            Padding = new Padding(1);
+            Margin = new Padding(0, 0, 0, 12);
 
-        protected override void OnPaintBackground(PaintEventArgs e)
-        {
-            using (var b = new SolidBrush(BackColor))
-                e.Graphics.FillRectangle(b, ClientRectangle);
-        }
+            var shell = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface, Padding = new Padding(14, 10, 14, 12) };
 
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            using (var pen = new Pen(BorderColor))
-                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
-
-            if (!string.IsNullOrEmpty(Title))
+            _title = new Label
             {
-                using (var font = AppTheme.CaptionFont)
-                using (var brush = new SolidBrush(AppTheme.TextMuted))
-                    e.Graphics.DrawString(Title, font, brush, 14, 8);
-            }
+                Text = title ?? string.Empty,
+                Dock = DockStyle.Top,
+                Height = 22,
+                Font = AppTheme.SectionFont,
+                ForeColor = AppTheme.TextMuted,
+                BackColor = AppTheme.Surface,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            _body = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = AppTheme.Surface
+            };
+
+            shell.Controls.Add(_body);
+            shell.Controls.Add(_title);
+            Controls.Add(shell);
+            Paint += (s, e) =>
+            {
+                using (var pen = new Pen(AppTheme.Border))
+                    e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            };
+        }
+
+        public void SetTitle(string title)
+        {
+            _title.Text = title ?? string.Empty;
         }
     }
 
     internal sealed class HeroClockLabel : Control
     {
-        private string _value = "--:--:--.---";
+        private string _value = "--:--:--";
 
         public HeroClockLabel()
         {
@@ -177,7 +192,6 @@ namespace AutoClickUI
             ForeColor = AppTheme.Accent;
             Font = AppTheme.HeroFont;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
-            UpdateStyles();
         }
 
         public override string Text
@@ -223,7 +237,7 @@ namespace AutoClickUI
             Cursor = Cursors.Hand;
             Font = AppTheme.UiFontBold;
             ForeColor = Color.White;
-            Height = 40;
+            Height = 38;
             SetAccent(AppTheme.Accent, AppTheme.AccentDim);
         }
 
@@ -241,7 +255,7 @@ namespace AutoClickUI
 
         public void SetSecondary()
         {
-            SetAccent(AppTheme.SurfaceAlt, Color.FromArgb(229, 231, 235));
+            SetAccent(AppTheme.SurfaceAlt, Color.FromArgb(241, 245, 249));
             _foreNormal = AppTheme.TextPrimary;
             ForeColor = _foreNormal;
             FlatAppearance.BorderSize = 1;
@@ -258,13 +272,13 @@ namespace AutoClickUI
         protected override void OnMouseLeave(System.EventArgs e)
         {
             _hover = false;
-            BackColor = Enabled ? _baseColor : Color.FromArgb(229, 231, 235);
+            BackColor = Enabled ? _baseColor : Color.FromArgb(241, 245, 249);
             base.OnMouseLeave(e);
         }
 
         protected override void OnEnabledChanged(System.EventArgs e)
         {
-            BackColor = Enabled ? (_hover ? _hoverColor : _baseColor) : Color.FromArgb(229, 231, 235);
+            BackColor = Enabled ? (_hover ? _hoverColor : _baseColor) : Color.FromArgb(241, 245, 249);
             ForeColor = Enabled ? _foreNormal : AppTheme.TextMuted;
             base.OnEnabledChanged(e);
         }
@@ -279,7 +293,6 @@ namespace AutoClickUI
             Height = 6;
             DoubleBuffered = true;
             BackColor = AppTheme.Surface;
-            _value = 0;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
         }
 
@@ -299,7 +312,7 @@ namespace AutoClickUI
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            using (var bg = new SolidBrush(Color.FromArgb(229, 231, 235)))
+            using (var bg = new SolidBrush(Color.FromArgb(226, 232, 240)))
                 e.Graphics.FillRectangle(bg, 0, 0, Width, Height);
             int w = (int)System.Math.Round(Width * _value);
             if (w > 0)
@@ -320,11 +333,12 @@ namespace AutoClickUI
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
             Font = AppTheme.UiFontBold;
-            Height = 30;
+            Size = new Size(88, 30);
             ForeColor = AppTheme.TextMuted;
             BackColor = AppTheme.Surface;
             FlatAppearance.MouseOverBackColor = AppTheme.SurfaceAlt;
             FlatAppearance.MouseDownBackColor = AppTheme.SurfaceAlt;
+            Margin = new Padding(4, 0, 0, 0);
         }
 
         public bool Active
@@ -335,10 +349,10 @@ namespace AutoClickUI
                 _active = value;
                 if (_active)
                 {
-                    BackColor = Color.FromArgb(204, 251, 241);
-                    ForeColor = AppTheme.AccentDim;
+                    BackColor = AppTheme.AccentSoft;
+                    ForeColor = AppTheme.Accent;
                     FlatAppearance.BorderSize = 1;
-                    FlatAppearance.BorderColor = AppTheme.Accent;
+                    FlatAppearance.BorderColor = AppTheme.AccentDim;
                 }
                 else
                 {

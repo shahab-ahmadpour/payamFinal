@@ -181,15 +181,16 @@ namespace AutoClickUI
         private Panel panelMain;
         private Panel panelSettings;
         private Panel panelLogs;
-        private SurfacePanel panelHero;
-        private SurfacePanel panelArm;
-        private SurfacePanel panelStatusChips;
-        private SurfacePanel panelSettingsFolders;
-        private SurfacePanel panelSettingsPayam;
-        private SurfacePanel panelSettingsShare;
+        private CardPanel panelHero;
+        private CardPanel panelArm;
+        private CardPanel panelStatusChips;
+        private CardPanel panelSettingsFolders;
+        private CardPanel panelSettingsPayam;
+        private CardPanel panelSettingsShare;
         private ThinProgressBar progressCountdown;
         private CheckBox chkShareAuthEnabled;
         private Label lblShareAuthStatus;
+        private Panel settingsStack;
 
         private NavButton btnNavConsole;
         private NavButton btnNavSettings;
@@ -1395,11 +1396,11 @@ namespace AutoClickUI
         {
             this.Text = "Payam AutoClick";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
-            this.ClientSize = new Size(780, 720);
-            this.MinimumSize = new Size(800, 760);
+            this.ClientSize = new Size(880, 760);
+            this.MinimumSize = new Size(860, 700);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
+            this.FormBorderStyle = FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
             this.FormClosing += MainForm_FormClosing;
             AppTheme.StyleForm(this);
 
@@ -1434,7 +1435,7 @@ namespace AutoClickUI
             };
             var lblSubtitle = new Label
             {
-                Text = "Simple · reliable · v2.5",
+                Text = "Clean console · v2.6",
                 Location = new Point(2, 34),
                 Size = new Size(300, 16),
                 Font = AppTheme.CaptionFont,
@@ -1517,40 +1518,49 @@ namespace AutoClickUI
                 Text = text,
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.BottomLeft,
-                Margin = new Padding(4, 2, 4, 0),
-                Height = 18
+                Margin = new Padding(2, 0, 2, 0),
+                AutoSize = false
             };
             AppTheme.StyleLabel(lbl, muted: true);
             lbl.Font = AppTheme.CaptionFont;
             return lbl;
         }
 
-        private Label MakeCaption(string text, int x, int y, int w = 120)
+        private TableLayoutPanel MakeFieldGrid(int columns)
         {
-            var lbl = MakeCaption(text);
-            lbl.Dock = DockStyle.None;
-            lbl.Location = new Point(x, y);
-            lbl.Size = new Size(w, 18);
-            return lbl;
+            var grid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = columns,
+                RowCount = 2,
+                BackColor = AppTheme.Surface,
+                Height = 52,
+                Margin = new Padding(0, 0, 0, 8),
+                Padding = new Padding(0)
+            };
+            float pct = 100f / columns;
+            for (int i = 0; i < columns; i++)
+                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, pct));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            return grid;
         }
 
-        private Control WrapField(Control field)
+        private void AddLabeledField(TableLayoutPanel grid, int col, string caption, Control field)
         {
-            field.Dock = DockStyle.Top;
-            field.Margin = new Padding(4, 2, 4, 8);
-            field.Height = 26;
-            return field;
+            grid.Controls.Add(MakeCaption(caption), col, 0);
+            field.Dock = DockStyle.Fill;
+            field.Margin = new Padding(2, 2, 2, 2);
+            grid.Controls.Add(field, col, 1);
         }
 
         private void BuildConsoleSection()
         {
-            // Stack: Hero (top) -> Status (top) -> Arm (fill remaining)
-            panelHero = new SurfacePanel
+            panelHero = new CardPanel("Live time")
             {
                 Dock = DockStyle.Top,
-                Height = 168,
-                Title = "Live time (Payam)",
-                Margin = new Padding(0, 0, 0, 10)
+                Height = 156,
+                Margin = new Padding(0, 0, 0, 12)
             };
 
             var heroInner = new TableLayoutPanel
@@ -1559,27 +1569,27 @@ namespace AutoClickUI
                 ColumnCount = 2,
                 RowCount = 4,
                 BackColor = AppTheme.Surface,
-                Padding = new Padding(4, 0, 4, 4)
+                Padding = new Padding(2, 0, 2, 0)
             };
             heroInner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            heroInner.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48F));
-            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 68F));
+            heroInner.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 44F));
+            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 62F));
             heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
             heroInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 10F));
 
             lblHeroClock = new HeroClockLabel
             {
-                Text = "--:--:--.---",
+                Text = "--:--:--",
                 Dock = DockStyle.Fill,
-                Margin = new Padding(4, 0, 4, 0)
+                Margin = new Padding(0)
             };
 
             lblSyncDot = new Label
             {
                 Text = "●",
                 Dock = DockStyle.Fill,
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = AppTheme.TextMuted,
                 BackColor = AppTheme.Surface,
                 TextAlign = ContentAlignment.MiddleCenter
@@ -1589,7 +1599,7 @@ namespace AutoClickUI
             {
                 Text = "Source: starting…",
                 Dock = DockStyle.Fill,
-                Margin = new Padding(6, 0, 6, 0)
+                Margin = new Padding(2, 0, 2, 0)
             };
             AppTheme.StyleLabel(lblHeroMeta, muted: true, mono: true);
 
@@ -1600,13 +1610,13 @@ namespace AutoClickUI
                 Font = AppTheme.UiFontBold,
                 ForeColor = AppTheme.TextPrimary,
                 BackColor = AppTheme.Surface,
-                Margin = new Padding(6, 0, 6, 0)
+                Margin = new Padding(2, 0, 2, 0)
             };
 
             progressCountdown = new ThinProgressBar
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(6, 2, 6, 0),
+                Margin = new Padding(2, 2, 2, 0),
                 Progress = 0
             };
 
@@ -1614,22 +1624,20 @@ namespace AutoClickUI
 
             heroInner.Controls.Add(lblHeroClock, 0, 0);
             heroInner.Controls.Add(lblSyncDot, 1, 0);
-            heroInner.SetRowSpan(lblSyncDot, 1);
             heroInner.Controls.Add(lblHeroMeta, 0, 1);
             heroInner.SetColumnSpan(lblHeroMeta, 2);
             heroInner.Controls.Add(lblCountdown, 0, 2);
             heroInner.SetColumnSpan(lblCountdown, 2);
             heroInner.Controls.Add(progressCountdown, 0, 3);
             heroInner.SetColumnSpan(progressCountdown, 2);
-            panelHero.Controls.Add(heroInner);
-            panelHero.Controls.Add(lblLiveTime);
+            panelHero.Body.Controls.Add(heroInner);
+            panelHero.Body.Controls.Add(lblLiveTime);
 
-            panelStatusChips = new SurfacePanel
+            panelStatusChips = new CardPanel("Status")
             {
                 Dock = DockStyle.Top,
-                Height = 92,
-                Title = "Status",
-                Margin = new Padding(0, 0, 0, 10)
+                Height = 96,
+                Margin = new Padding(0, 0, 0, 12)
             };
 
             var statusGrid = new TableLayoutPanel
@@ -1638,7 +1646,7 @@ namespace AutoClickUI
                 ColumnCount = 3,
                 RowCount = 2,
                 BackColor = AppTheme.Surface,
-                Padding = new Padding(6, 0, 6, 4)
+                Padding = new Padding(0)
             };
             statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
             statusGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
@@ -1646,11 +1654,11 @@ namespace AutoClickUI
             statusGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             statusGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
 
-            lblTargetTime = new Label { Text = "Target  ·  Not set", Dock = DockStyle.Fill, Margin = new Padding(4) };
-            lblProcessStatus = new Label { Text = "Process  ·  —", Dock = DockStyle.Fill, Margin = new Padding(4) };
-            lblClickCount = new Label { Text = "Clicks  ·  1", Dock = DockStyle.Fill, Margin = new Padding(4) };
-            lblConfigStatus = new Label { Text = "Config  ·  Not set", Dock = DockStyle.Fill, Margin = new Padding(4) };
-            lblPayamStatus = new Label { Text = "Sync  ·  starting…", Dock = DockStyle.Fill, Margin = new Padding(4) };
+            lblTargetTime = new Label { Text = "Target  ·  Not set", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            lblProcessStatus = new Label { Text = "Process  ·  —", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            lblClickCount = new Label { Text = "Clicks  ·  1", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            lblConfigStatus = new Label { Text = "Config  ·  Not set", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            lblPayamStatus = new Label { Text = "Sync  ·  starting…", Dock = DockStyle.Fill, Margin = new Padding(2) };
             AppTheme.StyleLabel(lblTargetTime, mono: true);
             AppTheme.StyleLabel(lblProcessStatus, muted: true);
             AppTheme.StyleLabel(lblClickCount, muted: true);
@@ -1663,12 +1671,12 @@ namespace AutoClickUI
             statusGrid.Controls.Add(lblConfigStatus, 0, 1);
             statusGrid.Controls.Add(lblPayamStatus, 1, 1);
             statusGrid.SetColumnSpan(lblPayamStatus, 2);
-            panelStatusChips.Controls.Add(statusGrid);
+            panelStatusChips.Body.Controls.Add(statusGrid);
 
-            panelArm = new SurfacePanel
+            panelArm = new CardPanel("Setup")
             {
                 Dock = DockStyle.Fill,
-                Title = "Setup"
+                Margin = new Padding(0)
             };
 
             var armRoot = new TableLayoutPanel
@@ -1677,59 +1685,34 @@ namespace AutoClickUI
                 ColumnCount = 1,
                 RowCount = 5,
                 BackColor = AppTheme.Surface,
-                Padding = new Padding(4, 0, 4, 4)
+                Padding = new Padding(0)
             };
-            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));  // row1 fields
-            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));  // row2 fields
-            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));  // secondary buttons
-            armRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // spacer
-            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 78F));  // start/stop + hint
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F));
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F));
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            armRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 74F));
 
-            // Field row 1
-            var row1 = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 4,
-                RowCount = 2,
-                BackColor = AppTheme.Surface
-            };
-            for (int i = 0; i < 4; i++)
-                row1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            row1.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            row1.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-
-            dtpTargetDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Value = DateTime.Today, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            var row1 = MakeFieldGrid(4);
+            row1.Dock = DockStyle.Fill;
+            row1.Margin = new Padding(0);
+            dtpTargetDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Value = DateTime.Today };
             AppTheme.StyleDateTimePicker(dtpTargetDate);
-            dtpTargetTime = new DateTimePicker { Format = DateTimePickerFormat.Time, ShowUpDown = true, Value = DateTime.Now.AddMinutes(1), Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            dtpTargetTime = new DateTimePicker { Format = DateTimePickerFormat.Time, ShowUpDown = true, Value = DateTime.Now.AddMinutes(1) };
             AppTheme.StyleDateTimePicker(dtpTargetTime);
-            nudMilliseconds = new NumericUpDown { Minimum = 0, Maximum = 999, Value = 0, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            nudMilliseconds = new NumericUpDown { Minimum = 0, Maximum = 999, Value = 0 };
             AppTheme.StyleNumeric(nudMilliseconds);
-            txtTargetProcess = new TextBox { Text = "Payam", Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            txtTargetProcess = new TextBox { Text = "Payam" };
             AppTheme.StyleTextBox(txtTargetProcess);
+            AddLabeledField(row1, 0, "TARGET DATE", dtpTargetDate);
+            AddLabeledField(row1, 1, "TARGET TIME", dtpTargetTime);
+            AddLabeledField(row1, 2, "MILLISECONDS", nudMilliseconds);
+            AddLabeledField(row1, 3, "PROCESS", txtTargetProcess);
 
-            row1.Controls.Add(MakeCaption("TARGET DATE"), 0, 0);
-            row1.Controls.Add(MakeCaption("TARGET TIME"), 1, 0);
-            row1.Controls.Add(MakeCaption("MILLISECONDS"), 2, 0);
-            row1.Controls.Add(MakeCaption("PROCESS"), 3, 0);
-            row1.Controls.Add(dtpTargetDate, 0, 1);
-            row1.Controls.Add(dtpTargetTime, 1, 1);
-            row1.Controls.Add(nudMilliseconds, 2, 1);
-            row1.Controls.Add(txtTargetProcess, 3, 1);
-
-            // Field row 2
-            var row2 = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 4,
-                RowCount = 2,
-                BackColor = AppTheme.Surface
-            };
-            for (int i = 0; i < 4; i++)
-                row2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            row2.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            row2.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
-
-            nudClickCount = new NumericUpDown { Minimum = 1, Maximum = 500, Value = 1, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            var row2 = MakeFieldGrid(3);
+            row2.Dock = DockStyle.Fill;
+            row2.Margin = new Padding(0);
+            nudClickCount = new NumericUpDown { Minimum = 1, Maximum = 500, Value = 1 };
             AppTheme.StyleNumeric(nudClickCount);
             nudClickCount.ValueChanged += (s, e) =>
             {
@@ -1737,11 +1720,9 @@ namespace AutoClickUI
                 if (nudClickCount.Value <= 1) nudClickInterval.Value = 0;
                 lblClickCount.Text = "Clicks  ·  " + ((int)nudClickCount.Value).ToString();
             };
-
-            nudClickInterval = new NumericUpDown { Minimum = 0, Maximum = 60000, Value = 0, Enabled = false, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            nudClickInterval = new NumericUpDown { Minimum = 0, Maximum = 60000, Value = 0, Enabled = false };
             AppTheme.StyleNumeric(nudClickInterval);
-
-            cmbTimeSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill, Margin = new Padding(4, 2, 4, 2) };
+            cmbTimeSource = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
             AppTheme.StyleCombo(cmbTimeSource);
             cmbTimeSource.Items.Add("Payam API Time");
             cmbTimeSource.Items.Add("NTP");
@@ -1758,34 +1739,27 @@ namespace AutoClickUI
                 }
                 SetTimeSourceMode(mode, syncNow: true);
             };
+            AddLabeledField(row2, 0, "CLICK COUNT", nudClickCount);
+            AddLabeledField(row2, 1, "CLICK INTERVAL (MS)", nudClickInterval);
+            AddLabeledField(row2, 2, "TIME SOURCE", cmbTimeSource);
 
-            row2.Controls.Add(MakeCaption("CLICK COUNT"), 0, 0);
-            row2.Controls.Add(MakeCaption("CLICK INTERVAL (MS)"), 1, 0);
-            row2.Controls.Add(MakeCaption("TIME SOURCE"), 2, 0);
-            row2.Controls.Add(new Label { BackColor = AppTheme.Surface, Dock = DockStyle.Fill }, 3, 0);
-            row2.Controls.Add(nudClickCount, 0, 1);
-            row2.Controls.Add(nudClickInterval, 1, 1);
-            row2.Controls.Add(cmbTimeSource, 2, 1);
-            row2.SetColumnSpan(cmbTimeSource, 2);
-
-            // Secondary actions
             var rowActions = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 1,
                 BackColor = AppTheme.Surface,
-                Padding = new Padding(0, 4, 0, 0)
+                Padding = new Padding(0, 2, 0, 0)
             };
             rowActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             rowActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
 
-            var btnRead = new AccentButton { Text = "Read Config", Dock = DockStyle.Fill, Margin = new Padding(4, 4, 8, 4) };
+            var btnRead = new AccentButton { Text = "Read Config", Dock = DockStyle.Fill, Margin = new Padding(0, 2, 6, 2) };
             btnRead.SetSecondary();
             btnRead.Click += BtnReadConfig_Click;
             btnReadConfig = btnRead;
 
-            var btnManual = new AccentButton { Text = "Use Manual Settings", Dock = DockStyle.Fill, Margin = new Padding(8, 4, 4, 4) };
+            var btnManual = new AccentButton { Text = "Use Manual Settings", Dock = DockStyle.Fill, Margin = new Padding(6, 2, 0, 2) };
             btnManual.SetSecondary();
             btnManual.Click += BtnManualConfig_Click;
             btnManualConfig = btnManual;
@@ -1793,10 +1767,8 @@ namespace AutoClickUI
             rowActions.Controls.Add(btnReadConfig, 0, 0);
             rowActions.Controls.Add(btnManualConfig, 1, 0);
 
-            // Spacer
             var spacer = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface };
 
-            // Bottom: equal START/STOP + hint
             var bottom = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -1806,18 +1778,18 @@ namespace AutoClickUI
             };
             bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
             bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
-            bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+            bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
+            bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
 
-            var start = new AccentButton { Text = "START", Dock = DockStyle.Fill, Margin = new Padding(4, 2, 8, 2) };
+            var start = new AccentButton { Text = "START", Dock = DockStyle.Fill, Margin = new Padding(0, 2, 6, 2) };
             start.SetAccent(AppTheme.Start, AppTheme.StartHover);
-            start.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
+            start.Font = new Font("Segoe UI Semibold", 11.5F, FontStyle.Bold);
             start.Click += BtnStart_Click;
             btnStart = start;
 
-            var stop = new AccentButton { Text = "STOP", Dock = DockStyle.Fill, Margin = new Padding(8, 2, 4, 2), Enabled = false };
+            var stop = new AccentButton { Text = "STOP", Dock = DockStyle.Fill, Margin = new Padding(6, 2, 0, 2), Enabled = false };
             stop.SetAccent(AppTheme.StopEnabled, AppTheme.Danger);
-            stop.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
+            stop.Font = new Font("Segoe UI Semibold", 11.5F, FontStyle.Bold);
             stop.Click += BtnStop_Click;
             btnStop = stop;
 
@@ -1825,7 +1797,7 @@ namespace AutoClickUI
             {
                 Text = "F12 fires on Payam clock + safety margin — never early.",
                 Dock = DockStyle.Fill,
-                Margin = new Padding(4, 4, 4, 0),
+                Margin = new Padding(0, 2, 0, 0),
                 TextAlign = ContentAlignment.MiddleLeft
             };
             AppTheme.StyleLabel(hint, muted: true);
@@ -1841,11 +1813,10 @@ namespace AutoClickUI
             armRoot.Controls.Add(rowActions, 0, 2);
             armRoot.Controls.Add(spacer, 0, 3);
             armRoot.Controls.Add(bottom, 0, 4);
-            panelArm.Controls.Add(armRoot);
+            panelArm.Body.Controls.Add(armRoot);
 
-            // Dock order: Fill first, then Top panels (last Top = visually highest)
-            var gap1 = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = AppTheme.Bg };
-            var gap2 = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = AppTheme.Bg };
+            var gap1 = new Panel { Dock = DockStyle.Top, Height = 12, BackColor = AppTheme.Bg };
+            var gap2 = new Panel { Dock = DockStyle.Top, Height = 12, BackColor = AppTheme.Bg };
             panelMain.Controls.Add(panelArm);
             panelMain.Controls.Add(gap2);
             panelMain.Controls.Add(panelStatusChips);
@@ -1855,18 +1826,96 @@ namespace AutoClickUI
 
         private void BuildSettingsSection()
         {
-            panelSettingsFolders = new SurfacePanel
+            const int foldersH = 210;
+            const int payamH = 278;
+            const int shareH = 278;
+            const int gap = 12;
+
+            settingsStack = new Panel
             {
-                Location = new Point(0, 0),
-                Size = new Size(708, 190),
-                Title = "Folders / NTP"
+                Dock = DockStyle.Top,
+                Height = foldersH + gap + payamH + gap + shareH + 8,
+                BackColor = AppTheme.Bg,
+                Padding = new Padding(0, 0, 4, 8)
             };
 
-            panelSettingsFolders.Controls.Add(MakeCaption("CONFIG FOLDER", 20, 28, 160));
-            txtConfigFolder = new TextBox { Location = new Point(20, 48), Size = new Size(540, 24), Text = configFolder };
-            AppTheme.StyleTextBox(txtConfigFolder);
-            var browseCfg = new AccentButton { Text = "Browse", Location = new Point(574, 44), Size = new Size(110, 30) };
-            browseCfg.SetSecondary();
+            panelSettingsFolders = new CardPanel("Folders / NTP")
+            {
+                Dock = DockStyle.Top,
+                Height = foldersH
+            };
+            BuildFoldersCard();
+
+            panelSettingsPayam = new CardPanel("Payam API Time")
+            {
+                Dock = DockStyle.Top,
+                Height = payamH
+            };
+            BuildPayamCard();
+
+            panelSettingsShare = new CardPanel("Network Share Auth")
+            {
+                Dock = DockStyle.Top,
+                Height = shareH
+            };
+            BuildShareCard();
+
+            // Dock Top: last added is visually highest
+            settingsStack.Controls.Add(panelSettingsShare);
+            settingsStack.Controls.Add(new Panel { Dock = DockStyle.Top, Height = gap, BackColor = AppTheme.Bg });
+            settingsStack.Controls.Add(panelSettingsPayam);
+            settingsStack.Controls.Add(new Panel { Dock = DockStyle.Top, Height = gap, BackColor = AppTheme.Bg });
+            settingsStack.Controls.Add(panelSettingsFolders);
+
+            panelSettings.Controls.Add(settingsStack);
+            Action syncWidths = () =>
+            {
+                int w = Math.Max(320, panelSettings.ClientSize.Width - panelSettings.Padding.Horizontal - 24);
+                settingsStack.Width = w;
+                panelSettingsFolders.Width = w;
+                panelSettingsPayam.Width = w;
+                panelSettingsShare.Width = w;
+            };
+            panelSettings.Resize += (s, e) => syncWidths();
+            syncWidths();
+        }
+
+        private TableLayoutPanel MakePathRow(string caption, out TextBox textBox, string initialText, out AccentButton browseBtn, string browseText, int browseWidth)
+        {
+            var row = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = 52,
+                ColumnCount = 2,
+                RowCount = 2,
+                BackColor = AppTheme.Surface,
+                Margin = new Padding(0, 0, 0, 8),
+                Padding = new Padding(0)
+            };
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, browseWidth));
+            row.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            row.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+
+            var cap = MakeCaption(caption);
+            row.Controls.Add(cap, 0, 0);
+            row.SetColumnSpan(cap, 2);
+
+            textBox = new TextBox { Text = initialText, Dock = DockStyle.Fill, Margin = new Padding(2, 2, 2, 2) };
+            AppTheme.StyleTextBox(textBox);
+            browseBtn = new AccentButton { Text = browseText, Dock = DockStyle.Fill, Margin = new Padding(6, 2, 0, 2) };
+            browseBtn.SetSecondary();
+            row.Controls.Add(textBox, 0, 1);
+            row.Controls.Add(browseBtn, 1, 1);
+            return row;
+        }
+
+        private void BuildFoldersCard()
+        {
+            var body = panelSettingsFolders.Body;
+
+            AccentButton browseCfg;
+            var pathCfg = MakePathRow("CONFIG FOLDER", out txtConfigFolder, configFolder, out browseCfg, "Browse", 110);
             browseCfg.Click += (s, e) =>
             {
                 using (var dialog = new FolderBrowserDialog())
@@ -1883,11 +1932,8 @@ namespace AutoClickUI
             };
             btnBrowseConfig = browseCfg;
 
-            panelSettingsFolders.Controls.Add(MakeCaption("LOG FOLDER", 20, 82, 160));
-            txtLogFolder = new TextBox { Location = new Point(20, 102), Size = new Size(540, 24), Text = logFolder };
-            AppTheme.StyleTextBox(txtLogFolder);
-            var browseLog = new AccentButton { Text = "Browse", Location = new Point(574, 98), Size = new Size(110, 30) };
-            browseLog.SetSecondary();
+            AccentButton browseLog;
+            var pathLog = MakePathRow("LOG FOLDER", out txtLogFolder, logFolder, out browseLog, "Browse", 110);
             browseLog.Click += (s, e) =>
             {
                 using (var dialog = new FolderBrowserDialog())
@@ -1901,11 +1947,10 @@ namespace AutoClickUI
             };
             btnBrowseLog = browseLog;
 
-            panelSettingsFolders.Controls.Add(MakeCaption("NTP SERVER", 20, 136, 160));
-            txtNtpServer = new TextBox { Location = new Point(20, 156), Size = new Size(420, 24), Text = ntpServer, Enabled = false };
-            AppTheme.StyleTextBox(txtNtpServer);
-            var syncNtp = new AccentButton { Text = "Sync NTP", Location = new Point(454, 152), Size = new Size(230, 30), Enabled = false };
-            syncNtp.SetSecondary();
+            AccentButton syncNtp;
+            var ntpRow = MakePathRow("NTP SERVER", out txtNtpServer, ntpServer, out syncNtp, "Sync NTP", 130);
+            txtNtpServer.Enabled = false;
+            syncNtp.Enabled = false;
             syncNtp.Click += (s, e) =>
             {
                 var server = SafeGetText(txtNtpServer);
@@ -1927,70 +1972,52 @@ namespace AutoClickUI
 
             lblNtpStatus = new Label
             {
-                Location = new Point(20, 0),
-                Size = new Size(1, 1),
                 Visible = false,
+                Size = new Size(1, 1),
                 Text = "NTP Status: Idle (Payam mode)"
             };
 
-            panelSettingsFolders.Controls.Add(txtConfigFolder);
-            panelSettingsFolders.Controls.Add(btnBrowseConfig);
-            panelSettingsFolders.Controls.Add(txtLogFolder);
-            panelSettingsFolders.Controls.Add(btnBrowseLog);
-            panelSettingsFolders.Controls.Add(txtNtpServer);
-            panelSettingsFolders.Controls.Add(btnSyncNtp);
-            panelSettingsFolders.Controls.Add(lblNtpStatus);
+            // Dock Top: last added is visually highest
+            body.Controls.Add(ntpRow);
+            body.Controls.Add(pathLog);
+            body.Controls.Add(pathCfg);
+            body.Controls.Add(lblNtpStatus);
+        }
 
-            panelSettingsPayam = new SurfacePanel
-            {
-                Location = new Point(0, 206),
-                Size = new Size(768, 280),
-                Title = "Payam API Time"
-            };
+        private void BuildPayamCard()
+        {
+            var body = panelSettingsPayam.Body;
 
-            panelSettingsPayam.Controls.Add(MakeCaption("API URL", 20, 28, 160));
-            txtPayamApiUrl = new TextBox
-            {
-                Location = new Point(20, 48),
-                Size = new Size(720, 24),
-                Text = PayamTimeConfig.DefaultApiUrl
-            };
+            var urlRow = MakeFieldGrid(1);
+            urlRow.Controls.Add(MakeCaption("API URL"), 0, 0);
+            txtPayamApiUrl = new TextBox { Text = PayamTimeConfig.DefaultApiUrl };
             AppTheme.StyleTextBox(txtPayamApiUrl);
+            txtPayamApiUrl.Dock = DockStyle.Fill;
+            txtPayamApiUrl.Margin = new Padding(2, 2, 2, 2);
+            urlRow.Controls.Add(txtPayamApiUrl, 0, 1);
 
-            panelSettingsPayam.Controls.Add(MakeCaption("YEARCODE", 20, 82, 160));
-            txtPayamYearCode = new TextBox
-            {
-                Location = new Point(20, 102),
-                Size = new Size(200, 24),
-                Text = PayamTimeConfig.DefaultYearCode
-            };
+            var mid = MakeFieldGrid(3);
+            txtPayamYearCode = new TextBox { Text = PayamTimeConfig.DefaultYearCode };
             AppTheme.StyleTextBox(txtPayamYearCode);
-
-            panelSettingsPayam.Controls.Add(MakeCaption("X-CONTENT-TYPE-OPTIONS", 240, 82, 220));
-            txtPayamContentTypeOptions = new TextBox
-            {
-                Location = new Point(240, 102),
-                Size = new Size(200, 24),
-                Text = PayamTimeConfig.DefaultContentTypeOptions
-            };
+            txtPayamContentTypeOptions = new TextBox { Text = PayamTimeConfig.DefaultContentTypeOptions };
             AppTheme.StyleTextBox(txtPayamContentTypeOptions);
-
-            panelSettingsPayam.Controls.Add(MakeCaption("SAFETY MARGIN (MS)", 460, 82, 180));
             nudSafetyMargin = new NumericUpDown
             {
-                Location = new Point(460, 102),
-                Size = new Size(120, 24),
                 Minimum = 0,
                 Maximum = 500,
                 Value = PayamTimeConfig.DefaultSafetyMarginMs
             };
             AppTheme.StyleNumeric(nudSafetyMargin);
+            AddLabeledField(mid, 0, "YEARCODE", txtPayamYearCode);
+            AddLabeledField(mid, 1, "X-CONTENT-TYPE-OPTIONS", txtPayamContentTypeOptions);
+            AddLabeledField(mid, 2, "SAFETY MARGIN (MS)", nudSafetyMargin);
 
-            panelSettingsPayam.Controls.Add(MakeCaption("CLOCK BIAS (MS)", 20, 138, 180));
+            var bias = MakeFieldGrid(2);
+            bias.ColumnStyles.Clear();
+            bias.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
+            bias.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             nudClockBias = new NumericUpDown
             {
-                Location = new Point(20, 158),
-                Size = new Size(120, 24),
                 Minimum = 0,
                 Maximum = 300,
                 Value = PayamTimeConfig.DefaultClockBiasMs
@@ -1998,22 +2025,37 @@ namespace AutoClickUI
             AppTheme.StyleNumeric(nudClockBias);
             nudClockBias.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
             nudSafetyMargin.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
-
+            AddLabeledField(bias, 0, "CLOCK BIAS (MS)", nudClockBias);
             var marginHint = new Label
             {
-                Text = "Clock Bias applies instantly (no Save needed). Raise it if AutoClick is still ahead of Payam UI.",
-                Location = new Point(160, 160),
-                Size = new Size(580, 22)
+                Text = "Bias applies instantly. Raise it if AutoClick is still ahead of Payam UI.",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(8, 2, 2, 2)
             };
             AppTheme.StyleLabel(marginHint, muted: true);
             marginHint.Font = AppTheme.CaptionFont;
+            bias.Controls.Add(MakeCaption(" "), 1, 0);
+            bias.Controls.Add(marginHint, 1, 1);
 
-            var savePayam = new AccentButton { Text = "Save Payam Config", Location = new Point(20, 210), Size = new Size(220, 40) };
+            var actions = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = 44,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = AppTheme.Surface,
+                Margin = new Padding(0, 8, 0, 0)
+            };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+
+            var savePayam = new AccentButton { Text = "Save Payam Config", Dock = DockStyle.Fill, Margin = new Padding(0, 2, 6, 2) };
             savePayam.SetSecondary();
             savePayam.Click += (s, e) => SavePayamConfigFromUi();
             btnSavePayamConfig = savePayam;
 
-            var syncPayam = new AccentButton { Text = "Apply / Resync Payam", Location = new Point(256, 210), Size = new Size(220, 40) };
+            var syncPayam = new AccentButton { Text = "Apply / Resync Payam", Dock = DockStyle.Fill, Margin = new Padding(6, 2, 0, 2) };
             syncPayam.SetAccent(AppTheme.Accent, AppTheme.AccentDim);
             syncPayam.Click += (s, e) =>
             {
@@ -2025,79 +2067,79 @@ namespace AutoClickUI
                 LogMessage("Payam config applied; waiting for next second-edge phase lock.", Color.Blue);
             };
             btnSyncPayam = syncPayam;
+            actions.Controls.Add(btnSavePayamConfig, 0, 0);
+            actions.Controls.Add(btnSyncPayam, 1, 0);
 
-            panelSettingsPayam.Controls.Add(txtPayamApiUrl);
-            panelSettingsPayam.Controls.Add(txtPayamYearCode);
-            panelSettingsPayam.Controls.Add(txtPayamContentTypeOptions);
-            panelSettingsPayam.Controls.Add(nudSafetyMargin);
-            panelSettingsPayam.Controls.Add(nudClockBias);
-            panelSettingsPayam.Controls.Add(marginHint);
-            panelSettingsPayam.Controls.Add(btnSavePayamConfig);
-            panelSettingsPayam.Controls.Add(btnSyncPayam);
+            body.Controls.Add(actions);
+            body.Controls.Add(bias);
+            body.Controls.Add(mid);
+            body.Controls.Add(urlRow);
+        }
 
-            panelSettings.Controls.Add(panelSettingsFolders);
-            panelSettings.Controls.Add(panelSettingsPayam);
-
-            // Network share auth (elevated admin UNC login)
-            panelSettingsShare = new SurfacePanel
-            {
-                Location = new Point(0, 452),
-                Size = new Size(708, 250),
-                Title = "Network Share Auth (\\\\irn-st10\\payamconf)"
-            };
+        private void BuildShareCard()
+        {
+            var body = panelSettingsShare.Body;
 
             chkShareAuthEnabled = new CheckBox
             {
                 Text = "Auto-login to config share (recommended when running as Administrator)",
-                Location = new Point(20, 28),
-                Size = new Size(660, 22),
+                Dock = DockStyle.Top,
+                Height = 24,
                 Checked = true,
                 ForeColor = AppTheme.TextPrimary,
                 BackColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Margin = new Padding(0, 0, 0, 6)
             };
 
-            panelSettingsShare.Controls.Add(MakeCaption("SHARE ROOT (UNC)", 20, 58, 200));
-            txtShareRoot = new TextBox
-            {
-                Location = new Point(20, 78),
-                Size = new Size(660, 24),
-                Text = ShareAuthConfig.DefaultShareRoot
-            };
+            var rootRow = MakeFieldGrid(1);
+            rootRow.Controls.Add(MakeCaption("SHARE ROOT (UNC)"), 0, 0);
+            txtShareRoot = new TextBox { Text = ShareAuthConfig.DefaultShareRoot };
             AppTheme.StyleTextBox(txtShareRoot);
+            txtShareRoot.Dock = DockStyle.Fill;
+            txtShareRoot.Margin = new Padding(2, 2, 2, 2);
+            rootRow.Controls.Add(txtShareRoot, 0, 1);
 
-            panelSettingsShare.Controls.Add(MakeCaption("DOMAIN", 20, 112, 120));
-            txtShareDomain = new TextBox { Location = new Point(20, 132), Size = new Size(200, 24) };
+            var creds = MakeFieldGrid(3);
+            txtShareDomain = new TextBox();
             AppTheme.StyleTextBox(txtShareDomain);
-
-            panelSettingsShare.Controls.Add(MakeCaption("USERNAME", 240, 112, 120));
-            txtShareUsername = new TextBox { Location = new Point(240, 132), Size = new Size(200, 24) };
+            txtShareUsername = new TextBox();
             AppTheme.StyleTextBox(txtShareUsername);
-
-            panelSettingsShare.Controls.Add(MakeCaption("PASSWORD", 460, 112, 120));
-            txtSharePassword = new TextBox
-            {
-                Location = new Point(460, 132),
-                Size = new Size(220, 24),
-                UseSystemPasswordChar = true
-            };
+            txtSharePassword = new TextBox { UseSystemPasswordChar = true };
             AppTheme.StyleTextBox(txtSharePassword);
+            AddLabeledField(creds, 0, "DOMAIN", txtShareDomain);
+            AddLabeledField(creds, 1, "USERNAME", txtShareUsername);
+            AddLabeledField(creds, 2, "PASSWORD", txtSharePassword);
 
             lblShareAuthStatus = new Label
             {
-                Location = new Point(20, 168),
-                Size = new Size(660, 18),
-                Text = "Share auth  ·  not configured"
+                Dock = DockStyle.Top,
+                Height = 20,
+                Text = "Share auth  ·  not configured",
+                Margin = new Padding(2, 4, 2, 4)
             };
             AppTheme.StyleLabel(lblShareAuthStatus, muted: true);
             lblShareAuthStatus.Font = AppTheme.CaptionFont;
 
-            var saveShare = new AccentButton { Text = "Save Share Auth", Location = new Point(20, 196), Size = new Size(200, 36) };
+            var actions = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = 44,
+                ColumnCount = 3,
+                RowCount = 1,
+                BackColor = AppTheme.Surface,
+                Margin = new Padding(0, 4, 0, 0)
+            };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32F));
+
+            var saveShare = new AccentButton { Text = "Save Share Auth", Dock = DockStyle.Fill, Margin = new Padding(0, 2, 6, 2) };
             saveShare.SetSecondary();
             saveShare.Click += (s, e) => SaveShareAuthFromUi(connectAfterSave: true);
             btnSaveShareAuth = saveShare;
 
-            var connectShare = new AccentButton { Text = "Connect Now", Location = new Point(236, 196), Size = new Size(200, 36) };
+            var connectShare = new AccentButton { Text = "Connect Now", Dock = DockStyle.Fill, Margin = new Padding(6, 2, 6, 2) };
             connectShare.SetAccent(AppTheme.AccentDim, AppTheme.Accent);
             connectShare.Click += (s, e) =>
             {
@@ -2113,33 +2155,31 @@ namespace AutoClickUI
 
             var shareHint = new Label
             {
-                Text = "Saved locally next to the exe (share_auth_config.txt). Avoids manual explorer login on each PC.",
-                Location = new Point(450, 204),
-                Size = new Size(230, 40)
+                Text = "Saved next to the exe. Avoids manual Explorer login.",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(6, 2, 0, 2)
             };
             AppTheme.StyleLabel(shareHint, muted: true);
             shareHint.Font = AppTheme.CaptionFont;
 
-            panelSettingsShare.Controls.Add(chkShareAuthEnabled);
-            panelSettingsShare.Controls.Add(txtShareRoot);
-            panelSettingsShare.Controls.Add(txtShareDomain);
-            panelSettingsShare.Controls.Add(txtShareUsername);
-            panelSettingsShare.Controls.Add(txtSharePassword);
-            panelSettingsShare.Controls.Add(lblShareAuthStatus);
-            panelSettingsShare.Controls.Add(btnSaveShareAuth);
-            panelSettingsShare.Controls.Add(btnConnectShare);
-            panelSettingsShare.Controls.Add(shareHint);
+            actions.Controls.Add(btnSaveShareAuth, 0, 0);
+            actions.Controls.Add(btnConnectShare, 1, 0);
+            actions.Controls.Add(shareHint, 2, 0);
 
-            panelSettings.Controls.Add(panelSettingsShare);
+            body.Controls.Add(actions);
+            body.Controls.Add(lblShareAuthStatus);
+            body.Controls.Add(creds);
+            body.Controls.Add(rootRow);
+            body.Controls.Add(chkShareAuthEnabled);
         }
 
         private void BuildLogsSection()
         {
-            var logSurface = new SurfacePanel
+            var logSurface = new CardPanel("Event Log")
             {
                 Dock = DockStyle.Fill,
-                Title = "Event Log",
-                Padding = new Padding(12, 28, 12, 12)
+                Margin = new Padding(0)
             };
 
             rtbLogs = new RichTextBox
@@ -2148,7 +2188,7 @@ namespace AutoClickUI
                 ReadOnly = true
             };
             AppTheme.StyleRichText(rtbLogs);
-            logSurface.Controls.Add(rtbLogs);
+            logSurface.Body.Controls.Add(rtbLogs);
             panelLogs.Controls.Add(logSurface);
         }
 
@@ -2166,7 +2206,7 @@ namespace AutoClickUI
                     UI(() =>
                     {
                         MessageBox.Show("Configuration folder path is empty.", "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        lblConfigStatus.Text = "Not Set";
+                        lblConfigStatus.Text = "Config  ·  Not set";
                         statusLabel.Text = "Invalid configuration path";
                     });
                     return;
@@ -2202,7 +2242,7 @@ namespace AutoClickUI
                     UI(() =>
                     {
                         MessageBox.Show("Configuration file not found.", "File Not Found", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        lblConfigStatus.Text = "Not Set";
+                        lblConfigStatus.Text = "Config  ·  Not set";
                         statusLabel.Text = "Configuration file not found";
                     });
                     return;
@@ -2210,7 +2250,7 @@ namespace AutoClickUI
 
                 UI(() =>
                 {
-                    lblConfigStatus.Text = Path.GetFileNameWithoutExtension(configPath) + " Found";
+                    lblConfigStatus.Text = "Config  ·  " + Path.GetFileNameWithoutExtension(configPath);
                     lblConfigStatus.ForeColor = Color.Green;
                 });
 
@@ -2237,7 +2277,7 @@ namespace AutoClickUI
                                 dtpTargetDate.Value = parsedTime.Date;
                                 dtpTargetTime.Value = DateTime.Today.Add(parsedTime.TimeOfDay);
                                 nudMilliseconds.Value = parsedTime.Millisecond;
-                                lblTargetTime.Text = $"Target Time: {targetTime:yyyy/MM/dd HH:mm:ss.fff}";
+                                lblTargetTime.Text = $"Target  ·  {targetTime:yyyy/MM/dd HH:mm:ss.fff}";
                             });
                             LogMessage($"Target time set: {targetTime:yyyy/MM/dd HH:mm:ss.fff}", Color.Green);
                         }
@@ -2255,7 +2295,7 @@ namespace AutoClickUI
                             UI(() =>
                             {
                                 txtTargetProcess.Text = targetProcess;
-                                lblProcessStatus.Text = $"Target Process: {targetProcess}";
+                                lblProcessStatus.Text = $"Process  ·  {targetProcess}";
                             });
                             LogMessage($"Target process set: {targetProcess}", Color.Green);
                         }
@@ -2271,7 +2311,7 @@ namespace AutoClickUI
                             {
                                 if (parsedCount > nudClickCount.Maximum) nudClickCount.Maximum = parsedCount;
                                 nudClickCount.Value = parsedCount;
-                                lblClickCount.Text = $"Click Count: {clickCount}";
+                                lblClickCount.Text = $"Clicks  ·  {clickCount}";
                             });
                             LogMessage($"Click count set: {clickCount}", Color.Green);
                         }
@@ -2324,10 +2364,10 @@ namespace AutoClickUI
 
                 UI(() =>
                 {
-                    lblTargetTime.Text = $"Target Time: {targetTime:yyyy/MM/dd HH:mm:ss.fff}";
-                    lblProcessStatus.Text = $"Target Process: {targetProcess}";
-                    lblClickCount.Text = $"Click Count: {clickCount}";
-                    lblConfigStatus.Text = "Using Manual Settings";
+                    lblTargetTime.Text = $"Target  ·  {targetTime:yyyy/MM/dd HH:mm:ss.fff}";
+                    lblProcessStatus.Text = $"Process  ·  {targetProcess}";
+                    lblClickCount.Text = $"Clicks  ·  {clickCount}";
+                    lblConfigStatus.Text = "Config  ·  Manual";
                     lblConfigStatus.ForeColor = Color.Green;
                 });
 
