@@ -1072,7 +1072,10 @@ namespace AutoClickUI
                 sb.AppendLine($"Target Time: {targetTime:yyyy/MM/dd HH:mm:ss.fff}");
                 sb.AppendLine($"Time Source: {DescribeTimeSourceForLog()}");
                 if (timeSourceMode == TimeSourceMode.PayamApi)
+                {
                     sb.AppendLine($"Payam Safety Margin: {payamConfig.SafetyMarginMs} ms");
+                    sb.AppendLine($"Payam Clock Bias: {payamConfig.ClockBiasMs} ms");
+                }
                 sb.AppendLine($"Click Interval: {clickInterval} ms");
                 sb.AppendLine($"Key Pattern: F12, Tab, Space between each F12");
                 sb.AppendLine($"Total Duration for {clickTimes.Count} key presses: {totalDuration:F3} ms");
@@ -1955,10 +1958,12 @@ namespace AutoClickUI
                 Value = PayamTimeConfig.DefaultClockBiasMs
             };
             AppTheme.StyleNumeric(nudClockBias);
+            nudClockBias.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
+            nudSafetyMargin.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
 
             var marginHint = new Label
             {
-                Text = "Safety = wait after target.  Clock Bias = hold Live Time behind Payam UI if app looks ahead (try 40–100).",
+                Text = "Clock Bias applies instantly (no Save needed). Raise it if AutoClick is still ahead of Payam UI.",
                 Location = new Point(160, 160),
                 Size = new Size(580, 22)
             };
