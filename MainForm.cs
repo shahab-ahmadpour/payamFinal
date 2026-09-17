@@ -178,6 +178,7 @@ namespace AutoClickUI
         private Button btnReadConfig;
 
         private Panel panelHeader;
+        private Panel panelContentHost;
         private Panel panelMain;
         private Panel panelSettings;
         private Panel panelLogs;
@@ -1429,13 +1430,18 @@ namespace AutoClickUI
             this.FormClosing += MainForm_FormClosing;
             AppTheme.StyleForm(this);
 
-            // Header
+            // Header (must stay outside content host so Dock never covers it)
             panelHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 58,
+                Height = 60,
                 BackColor = AppTheme.Surface,
                 Padding = new Padding(16, 0, 16, 0)
+            };
+            panelHeader.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(AppTheme.Border))
+                    e.Graphics.DrawLine(pen, 0, panelHeader.Height - 1, panelHeader.Width, panelHeader.Height - 1);
             };
 
             var headerLayout = new TableLayoutPanel
@@ -1495,10 +1501,18 @@ namespace AutoClickUI
             headerLayout.Controls.Add(navPanel, 1, 0);
             panelHeader.Controls.Add(headerLayout);
 
-            panelMain = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = true };
+            // Content host: all tabs live HERE so BringToFront never steals space from the header
+            panelContentHost = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = AppTheme.Bg,
+                Padding = new Padding(0)
+            };
+
+            panelMain = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = true, AutoScroll = true };
             panelSettings = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false, AutoScroll = true };
-            panelAdmin = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false };
-            panelLogs = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false };
+            panelAdmin = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false, AutoScroll = true };
+            panelLogs = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false, AutoScroll = true };
 
             BuildConsoleSection();
             BuildSettingsSection();
@@ -1510,11 +1524,14 @@ namespace AutoClickUI
             statusStrip.Items.Add(statusLabel);
             AppTheme.StyleStatusStrip(statusStrip, statusLabel);
 
-            // Z-order: fill panels first, then strip, then header
-            this.Controls.Add(panelMain);
-            this.Controls.Add(panelSettings);
-            this.Controls.Add(panelAdmin);
-            this.Controls.Add(panelLogs);
+            // Sections only inside content host
+            panelContentHost.Controls.Add(panelLogs);
+            panelContentHost.Controls.Add(panelAdmin);
+            panelContentHost.Controls.Add(panelSettings);
+            panelContentHost.Controls.Add(panelMain);
+
+            // Form dock order: Fill host first, then Bottom strip, then Top header (last = docks first)
+            this.Controls.Add(panelContentHost);
             this.Controls.Add(statusStrip);
             this.Controls.Add(panelHeader);
 
@@ -1537,12 +1554,14 @@ namespace AutoClickUI
             btnNavSettings.Active = index == 1;
             btnNavAdmin.Active = index == 2;
             btnNavLogs.Active = index == 3;
-            if (index == 0) panelMain.BringToFront();
-            else if (index == 1) panelSettings.BringToFront();
-            else if (index == 2) panelAdmin.BringToFront();
-            else panelLogs.BringToFront();
-            panelHeader.BringToFront();
-            statusStrip.BringToFront();
+
+            // Only reorder inside content host — never BringToFront against the form header
+            Panel active = panelMain;
+            if (index == 1) active = panelSettings;
+            else if (index == 2) active = panelAdmin;
+            else if (index == 3) active = panelLogs;
+            if (active != null && panelContentHost != null && active.Parent == panelContentHost)
+                active.BringToFront();
         }
 
         private Label MakeCaption(string text)
@@ -2212,11 +2231,13 @@ namespace AutoClickUI
         {
             var root = new TableLayoutPanel
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 680,
                 ColumnCount = 2,
                 RowCount = 2,
                 BackColor = AppTheme.Bg,
-                Padding = new Padding(0)
+                Padding = new Padding(0),
+                Margin = new Padding(0)
             };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42F));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58F));
@@ -2244,6 +2265,13 @@ namespace AutoClickUI
             root.Controls.Add(previewCard, 0, 1);
 
             panelAdmin.Controls.Add(root);
+            panelAdmin.Resize += (s, e) =>
+            {
+                int w = Math.Max(400, panelAdmin.ClientSize.Width - panelAdmin.Padding.Horizontal - 8);
+                int h = Math.Max(640, panelAdmin.ClientSize.Height - panelAdmin.Padding.Vertical - 8);
+                root.Width = w;
+                root.Height = h;
+            };
 
             // Seed defaults from console controls when available
             try
