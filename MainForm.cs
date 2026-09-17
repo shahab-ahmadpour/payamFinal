@@ -859,6 +859,32 @@ namespace AutoClickUI
                     var fireAt = GetFireThreshold();
                     double remainingMs = (fireAt - now).TotalMilliseconds;
 
+                    // Near the target second, also accept the exact API NowTime edge
+                    // so F12 aligns with the second Payam actually exchanges.
+                    if (timeSourceMode == TimeSourceMode.PayamApi
+                        && payamTimeProvider != null
+                        && remainingMs <= 1200)
+                    {
+                        DateTime apiSecond;
+                        string apiText;
+                        if (payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText))
+                        {
+                            // Target second reached on API → wait only the ms part + safety margin.
+                            var targetSecond = new DateTime(
+                                fireAt.Year, fireAt.Month, fireAt.Day,
+                                fireAt.Hour, fireAt.Minute, fireAt.Second, 0, fireAt.Kind);
+                            if (apiSecond >= targetSecond)
+                            {
+                                // fireAt may include ms + safety margin beyond the whole second.
+                                double afterSecondMs = (fireAt - targetSecond).TotalMilliseconds;
+                                if (afterSecondMs > 0)
+                                    PreciseDelayMs(afterSecondMs);
+                                PressF12Multiple();
+                                break;
+                            }
+                        }
+                    }
+
                     if (remainingMs <= 0)
                     {
                         PressF12Multiple();
@@ -2458,6 +2484,23 @@ namespace AutoClickUI
                     bool payamOk = payamTimeProvider != null && payamTimeProvider.HasPhaseLock;
                     bool payamProv = payamTimeProvider != null && payamTimeProvider.HasSync && !payamOk;
 
+                    // Payam mode: show the exact API NowTime second (no invented .fff).
+                    string clockText;
+                    if (timeSourceMode == TimeSourceMode.PayamApi && payamTimeProvider != null)
+                    {
+                        DateTime apiSecond;
+                        string apiText;
+                        if (payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText)
+                            && !string.IsNullOrEmpty(apiText))
+                            clockText = apiText; // HH:mm:ss from PeriodicData
+                        else
+                            clockText = now.ToString("HH:mm:ss");
+                    }
+                    else
+                    {
+                        clockText = now.ToString("HH:mm:ss.fff");
+                    }
+
                     string remText = "Remaining  —";
                     double progress = 0;
                     string statusText = null;
@@ -2504,15 +2547,15 @@ namespace AutoClickUI
                     UI(() =>
                     {
                         if (lblHeroClock != null)
-                            lblHeroClock.Text = now.ToString("HH:mm:ss.fff");
+                            lblHeroClock.Text = clockText;
                         if (lblLiveTime != null)
                             lblLiveTime.Text = $"Live Time: {now:yyyy/MM/dd HH:mm:ss.fff} {source}";
                         if (lblHeroMeta != null)
                         {
-                            string biasNote = "";
-                            if (timeSourceMode == TimeSourceMode.PayamApi && payamConfig != null)
-                                biasNote = "  bias -" + payamConfig.ClockBiasMs + "ms";
-                            lblHeroMeta.Text = now.ToString("yyyy/MM/dd") + "  " + source + biasNote;
+                            if (timeSourceMode == TimeSourceMode.PayamApi)
+                                lblHeroMeta.Text = now.ToString("yyyy/MM/dd") + "  " + source + "  (second = Payam NowTime)";
+                            else
+                                lblHeroMeta.Text = now.ToString("yyyy/MM/dd") + "  " + source;
                         }
 
                         if (lblSyncDot != null)

@@ -119,6 +119,37 @@ namespace AutoClickUI
         }
 
         /// <summary>
+        /// Exact second currently reported by Payam PeriodicData (no invented milliseconds).
+        /// This matches the NowTime string exchanged by Payam.
+        /// </summary>
+        public bool TryGetApiSecondTime(out DateTime secondTime, out string nowTimeText)
+        {
+            lock (_gate)
+            {
+                nowTimeText = _lastNowTimeText;
+                if (!_hasAnyReading || string.IsNullOrEmpty(_lastNowTimeText))
+                {
+                    secondTime = DateTime.Now;
+                    return false;
+                }
+
+                secondTime = CombineWithToday(_lastNowTimeText);
+                // Keep calendar day consistent with running model near midnight.
+                if (_hasPhaseLock || _hasAnyReading)
+                {
+                    DateTime running = _basePayamLocal.AddMilliseconds(_stopwatch.Elapsed.TotalMilliseconds);
+                    if (secondTime.Date != running.Date
+                        && Math.Abs((secondTime - running).TotalHours) > 12)
+                    {
+                        secondTime = new DateTime(running.Year, running.Month, running.Day,
+                            secondTime.Hour, secondTime.Minute, secondTime.Second, 0, DateTimeKind.Local);
+                    }
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
         /// Effective fire threshold: target Payam time + positive safety margin.
         /// </summary>
         public DateTime GetFireThreshold(DateTime targetPayamTime)
@@ -242,6 +273,7 @@ namespace AutoClickUI
 
         /// <summary>
         /// Minimal raw HTTP/1.1 GET — no User-Agent/Accept (Payam returns 400 if extras are present).
+        /// Uses a short-lived connection with TCP_NODELAY for lower second-edge latency.
         /// </summary>
         internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
         {
@@ -262,6 +294,7 @@ namespace AutoClickUI
             req.Append("Host: ").Append(host).Append(':').Append(port).Append("\r\n");
             req.Append("YearCode: ").Append(cfg.YearCode ?? string.Empty).Append("\r\n");
             req.Append("X-Content-Type-Options: ").Append(cfg.ContentTypeOptions ?? string.Empty).Append("\r\n");
+            // close is required for simple framing; reconnect cost is still lower than HttpClient overhead.
             req.Append("Connection: close\r\n");
             req.Append("\r\n");
 
@@ -269,14 +302,17 @@ namespace AutoClickUI
 
             using (var client = new TcpClient())
             {
+                // Faster connect + tiny buffers for a small JSON payload.
+                client.NoDelay = true;
+                client.ReceiveBufferSize = 4096;
+                client.SendBufferSize = 1024;
+                client.ReceiveTimeout = 1500;
+                client.SendTimeout = 1500;
+
                 var connectResult = client.BeginConnect(host, port, null, null);
-                if (!connectResult.AsyncWaitHandle.WaitOne(3000))
+                if (!connectResult.AsyncWaitHandle.WaitOne(1500))
                     throw new TimeoutException("Connect timeout to " + host + ":" + port);
                 client.EndConnect(connectResult);
-
-                client.NoDelay = true;
-                client.ReceiveTimeout = 3000;
-                client.SendTimeout = 3000;
 
                 using (NetworkStream stream = client.GetStream())
                 {

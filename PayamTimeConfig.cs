@@ -14,7 +14,7 @@ namespace AutoClickUI
         public const string DefaultYearCode = "0";
         public const string DefaultContentTypeOptions = "54I_s";
         public const int DefaultSafetyMarginMs = 10;
-        public const int DefaultPollIntervalMs = 40;
+        public const int DefaultPollIntervalMs = 25;
         /// <summary>Subtract from live Payam clock so AutoClick never leads the Payam UI.</summary>
         public const int DefaultClockBiasMs = 60;
 
