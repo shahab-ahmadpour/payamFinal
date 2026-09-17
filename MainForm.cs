@@ -181,6 +181,7 @@ namespace AutoClickUI
         private Panel panelMain;
         private Panel panelSettings;
         private Panel panelLogs;
+        private Panel panelAdmin;
         private CardPanel panelHero;
         private CardPanel panelArm;
         private CardPanel panelStatusChips;
@@ -194,10 +195,34 @@ namespace AutoClickUI
 
         private NavButton btnNavConsole;
         private NavButton btnNavSettings;
+        private NavButton btnNavAdmin;
         private NavButton btnNavLogs;
 
         private RichTextBox rtbLogs;
         private ComboBox cmbTimeSource;
+
+        // Admin / Config Distributor
+        private DateTimePicker dtpDistDate;
+        private DateTimePicker dtpDistBaseTime;
+        private NumericUpDown nudDistBaseMs;
+        private NumericUpDown nudDistEndMs;
+        private NumericUpDown nudDistClickCount;
+        private NumericUpDown nudDistClickInterval;
+        private TextBox txtDistProcess;
+        private TextBox txtDistMachineInput;
+        private ListBox lstDistMachines;
+        private ListView lvDistPreview;
+        private Label lblDistSummary;
+        private CheckBox chkDistCleanupOrphans;
+        private CheckBox chkDistSaveMachinesFile;
+        private Button btnDistScan;
+        private Button btnDistLoadList;
+        private Button btnDistSaveList;
+        private Button btnDistAddMachine;
+        private Button btnDistRemoveMachine;
+        private Button btnDistPreview;
+        private Button btnDistGenerate;
+        private DistributePlan lastDistPlan;
 
         private StatusStrip statusStrip;
         private ToolStripStatusLabel statusLabel;
@@ -1396,8 +1421,8 @@ namespace AutoClickUI
         {
             this.Text = "Payam AutoClick";
             this.Icon = PayamAutoClick.Properties.Resources.Icon1;
-            this.ClientSize = new Size(880, 760);
-            this.MinimumSize = new Size(860, 700);
+            this.ClientSize = new Size(960, 780);
+            this.MinimumSize = new Size(920, 720);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.Sizable;
             this.MaximizeBox = true;
@@ -1421,7 +1446,7 @@ namespace AutoClickUI
                 BackColor = AppTheme.Surface
             };
             headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 310F));
+            headerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 420F));
 
             var brandPanel = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Surface };
             lblBrand = new Label
@@ -1435,9 +1460,9 @@ namespace AutoClickUI
             };
             var lblSubtitle = new Label
             {
-                Text = "Clean console · v2.6",
+                Text = "Clean console · config distributor · v2.7",
                 Location = new Point(2, 34),
-                Size = new Size(300, 16),
+                Size = new Size(360, 16),
                 Font = AppTheme.CaptionFont,
                 ForeColor = AppTheme.TextMuted,
                 BackColor = AppTheme.Surface
@@ -1453,14 +1478,17 @@ namespace AutoClickUI
                 BackColor = AppTheme.Surface,
                 Padding = new Padding(0, 12, 0, 0)
             };
-            btnNavConsole = new NavButton { Text = "Console", Size = new Size(92, 32), Active = true, Margin = new Padding(4, 0, 4, 0) };
-            btnNavSettings = new NavButton { Text = "Settings", Size = new Size(92, 32), Margin = new Padding(4, 0, 4, 0) };
-            btnNavLogs = new NavButton { Text = "Logs", Size = new Size(92, 32), Margin = new Padding(4, 0, 4, 0) };
+            btnNavConsole = new NavButton { Text = "Console", Size = new Size(88, 32), Active = true, Margin = new Padding(2, 0, 2, 0) };
+            btnNavSettings = new NavButton { Text = "Settings", Size = new Size(88, 32), Margin = new Padding(2, 0, 2, 0) };
+            btnNavAdmin = new NavButton { Text = "Admin", Size = new Size(88, 32), Margin = new Padding(2, 0, 2, 0) };
+            btnNavLogs = new NavButton { Text = "Logs", Size = new Size(88, 32), Margin = new Padding(2, 0, 2, 0) };
             btnNavConsole.Click += (s, e) => ShowSection(0);
             btnNavSettings.Click += (s, e) => ShowSection(1);
-            btnNavLogs.Click += (s, e) => ShowSection(2);
+            btnNavAdmin.Click += (s, e) => ShowSection(2);
+            btnNavLogs.Click += (s, e) => ShowSection(3);
             navPanel.Controls.Add(btnNavConsole);
             navPanel.Controls.Add(btnNavSettings);
+            navPanel.Controls.Add(btnNavAdmin);
             navPanel.Controls.Add(btnNavLogs);
 
             headerLayout.Controls.Add(brandPanel, 0, 0);
@@ -1469,10 +1497,12 @@ namespace AutoClickUI
 
             panelMain = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = true };
             panelSettings = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false, AutoScroll = true };
+            panelAdmin = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false };
             panelLogs = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Bg, Padding = new Padding(16), Visible = false };
 
             BuildConsoleSection();
             BuildSettingsSection();
+            BuildAdminSection();
             BuildLogsSection();
 
             statusStrip = new StatusStrip();
@@ -1483,6 +1513,7 @@ namespace AutoClickUI
             // Z-order: fill panels first, then strip, then header
             this.Controls.Add(panelMain);
             this.Controls.Add(panelSettings);
+            this.Controls.Add(panelAdmin);
             this.Controls.Add(panelLogs);
             this.Controls.Add(statusStrip);
             this.Controls.Add(panelHeader);
@@ -1500,12 +1531,15 @@ namespace AutoClickUI
         {
             panelMain.Visible = index == 0;
             panelSettings.Visible = index == 1;
-            panelLogs.Visible = index == 2;
+            panelAdmin.Visible = index == 2;
+            panelLogs.Visible = index == 3;
             btnNavConsole.Active = index == 0;
             btnNavSettings.Active = index == 1;
-            btnNavLogs.Active = index == 2;
+            btnNavAdmin.Active = index == 2;
+            btnNavLogs.Active = index == 3;
             if (index == 0) panelMain.BringToFront();
             else if (index == 1) panelSettings.BringToFront();
+            else if (index == 2) panelAdmin.BringToFront();
             else panelLogs.BringToFront();
             panelHeader.BringToFront();
             statusStrip.BringToFront();
@@ -2172,6 +2206,608 @@ namespace AutoClickUI
             body.Controls.Add(creds);
             body.Controls.Add(rootRow);
             body.Controls.Add(chkShareAuthEnabled);
+        }
+
+        private void BuildAdminSection()
+        {
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                BackColor = AppTheme.Bg,
+                Padding = new Padding(0)
+            };
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42F));
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58F));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250F));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            var scheduleCard = new CardPanel("Schedule window");
+            scheduleCard.Dock = DockStyle.Fill;
+            scheduleCard.Margin = new Padding(0, 0, 8, 8);
+            BuildDistScheduleCard(scheduleCard.Body);
+
+            var machinesCard = new CardPanel("Machines");
+            machinesCard.Dock = DockStyle.Fill;
+            machinesCard.Margin = new Padding(8, 0, 0, 8);
+            BuildDistMachinesCard(machinesCard.Body);
+
+            var previewCard = new CardPanel("Preview & generate");
+            previewCard.Dock = DockStyle.Fill;
+            previewCard.Margin = new Padding(0, 8, 0, 0);
+            BuildDistPreviewCard(previewCard.Body);
+
+            root.Controls.Add(scheduleCard, 0, 0);
+            root.Controls.Add(machinesCard, 1, 0);
+            root.SetColumnSpan(previewCard, 2);
+            root.Controls.Add(previewCard, 0, 1);
+
+            panelAdmin.Controls.Add(root);
+
+            // Seed defaults from console controls when available
+            try
+            {
+                dtpDistDate.Value = dtpTargetDate != null ? dtpTargetDate.Value.Date : DateTime.Today;
+                var baseTod = dtpTargetTime != null ? dtpTargetTime.Value.TimeOfDay : DateTime.Now.AddMinutes(2).TimeOfDay;
+                dtpDistBaseTime.Value = DateTime.Today.Add(new TimeSpan(baseTod.Hours, baseTod.Minutes, baseTod.Seconds));
+                nudDistBaseMs.Value = 700;
+                nudDistEndMs.Value = 200; // crosses next second when End < Start
+                txtDistProcess.Text = SafeGetText(txtTargetProcess) ?? "Payam";
+                if (nudClickCount != null) nudDistClickCount.Value = Math.Max(1, nudClickCount.Value);
+            }
+            catch { }
+        }
+
+        private void BuildDistScheduleCard(Panel body)
+        {
+            var grid = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 4,
+                BackColor = AppTheme.Surface,
+                Padding = new Padding(0)
+            };
+            for (int i = 0; i < 4; i++)
+                grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 18F));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+
+            dtpDistDate = new DateTimePicker { Format = DateTimePickerFormat.Short, Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleDateTimePicker(dtpDistDate);
+            dtpDistBaseTime = new DateTimePicker { Format = DateTimePickerFormat.Time, ShowUpDown = true, Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleDateTimePicker(dtpDistBaseTime);
+            nudDistBaseMs = new NumericUpDown { Minimum = 0, Maximum = 999, Value = 700, Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleNumeric(nudDistBaseMs);
+            nudDistEndMs = new NumericUpDown { Minimum = 0, Maximum = 999, Value = 200, Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleNumeric(nudDistEndMs);
+
+            grid.Controls.Add(MakeCaption("DATE"), 0, 0);
+            grid.Controls.Add(MakeCaption("BASE TIME"), 1, 0);
+            grid.Controls.Add(MakeCaption("START MS"), 2, 0);
+            grid.Controls.Add(MakeCaption("END MS"), 3, 0);
+            grid.Controls.Add(dtpDistDate, 0, 1);
+            grid.Controls.Add(dtpDistBaseTime, 1, 1);
+            grid.Controls.Add(nudDistBaseMs, 2, 1);
+            grid.Controls.Add(nudDistEndMs, 3, 1);
+
+            txtDistProcess = new TextBox { Text = "Payam", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleTextBox(txtDistProcess);
+            nudDistClickCount = new NumericUpDown { Minimum = 1, Maximum = 500, Value = 3, Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleNumeric(nudDistClickCount);
+            nudDistClickInterval = new NumericUpDown { Minimum = 0, Maximum = 60000, Value = 0, Dock = DockStyle.Fill, Margin = new Padding(2) };
+            AppTheme.StyleNumeric(nudDistClickInterval);
+
+            var hint = new Label
+            {
+                Text = "If End MS < Start MS → crosses into next second (e.g. .700 → .200).",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(2),
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            AppTheme.StyleLabel(hint, muted: true);
+            hint.Font = AppTheme.CaptionFont;
+
+            grid.Controls.Add(MakeCaption("PROCESS"), 0, 2);
+            grid.Controls.Add(MakeCaption("CLICK COUNT"), 1, 2);
+            grid.Controls.Add(MakeCaption("CLICK INTERVAL"), 2, 2);
+            grid.Controls.Add(MakeCaption("NOTE"), 3, 2);
+            grid.Controls.Add(txtDistProcess, 0, 3);
+            grid.Controls.Add(nudDistClickCount, 1, 3);
+            grid.Controls.Add(nudDistClickInterval, 2, 3);
+            grid.Controls.Add(hint, 3, 3);
+
+            body.Controls.Add(grid);
+        }
+
+        private void BuildDistMachinesCard(Panel body)
+        {
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                BackColor = AppTheme.Surface
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+
+            var top = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 1,
+                BackColor = AppTheme.Surface
+            };
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F));
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F));
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78F));
+
+            txtDistMachineInput = new TextBox { Dock = DockStyle.Fill, Margin = new Padding(2), Text = "" };
+            AppTheme.StyleTextBox(txtDistMachineInput);
+            txtDistMachineInput.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    DistAddMachineFromInput();
+                }
+            };
+
+            var addBtn = new AccentButton { Text = "Add", Dock = DockStyle.Fill, Margin = new Padding(4, 2, 2, 2) };
+            addBtn.SetSecondary();
+            addBtn.Click += (s, e) => DistAddMachineFromInput();
+            btnDistAddMachine = addBtn;
+
+            var remBtn = new AccentButton { Text = "Remove", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            remBtn.SetSecondary();
+            remBtn.Click += (s, e) => DistRemoveSelectedMachines();
+            btnDistRemoveMachine = remBtn;
+
+            var scanBtn = new AccentButton { Text = "Scan share", Dock = DockStyle.Fill, Margin = new Padding(2, 2, 0, 2) };
+            scanBtn.SetAccent(AppTheme.Accent, AppTheme.AccentDim);
+            scanBtn.Click += (s, e) => DistScanShareMachines();
+            btnDistScan = scanBtn;
+
+            top.Controls.Add(txtDistMachineInput, 0, 0);
+            top.Controls.Add(btnDistAddMachine, 1, 0);
+            top.Controls.Add(btnDistRemoveMachine, 2, 0);
+            top.Controls.Add(btnDistScan, 3, 0);
+
+            lstDistMachines = new ListBox
+            {
+                Dock = DockStyle.Fill,
+                IntegralHeight = false,
+                SelectionMode = SelectionMode.MultiExtended,
+                Font = AppTheme.MonoFont,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.White,
+                ForeColor = AppTheme.TextPrimary,
+                Margin = new Padding(2, 6, 2, 4)
+            };
+
+            var bottom = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                BackColor = AppTheme.Surface
+            };
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+
+            var loadBtn = new AccentButton { Text = "Load machines.txt", Dock = DockStyle.Fill, Margin = new Padding(2, 2, 6, 2) };
+            loadBtn.SetSecondary();
+            loadBtn.Click += (s, e) => DistLoadMachinesFile();
+            btnDistLoadList = loadBtn;
+
+            var saveBtn = new AccentButton { Text = "Save machines.txt", Dock = DockStyle.Fill, Margin = new Padding(6, 2, 2, 2) };
+            saveBtn.SetSecondary();
+            saveBtn.Click += (s, e) => DistSaveMachinesFile();
+            btnDistSaveList = saveBtn;
+
+            bottom.Controls.Add(btnDistLoadList, 0, 0);
+            bottom.Controls.Add(btnDistSaveList, 1, 0);
+
+            layout.Controls.Add(top, 0, 0);
+            layout.Controls.Add(lstDistMachines, 0, 1);
+            layout.Controls.Add(bottom, 0, 2);
+            body.Controls.Add(layout);
+        }
+
+        private void BuildDistPreviewCard(Panel body)
+        {
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                BackColor = AppTheme.Surface
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+
+            lblDistSummary = new Label
+            {
+                Text = "Load or scan machines, set the window, then Preview.",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(2, 0, 2, 0),
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            AppTheme.StyleLabel(lblDistSummary, muted: true);
+
+            lvDistPreview = new ListView
+            {
+                Dock = DockStyle.Fill,
+                View = View.Details,
+                FullRowSelect = true,
+                GridLines = true,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = AppTheme.MonoFont,
+                BackColor = Color.White,
+                ForeColor = AppTheme.TextPrimary,
+                Margin = new Padding(2, 4, 2, 4)
+            };
+            lvDistPreview.Columns.Add("#", 44);
+            lvDistPreview.Columns.Add("Machine", 160);
+            lvDistPreview.Columns.Add("TargetTime", 210);
+            lvDistPreview.Columns.Add("File", 220);
+            lvDistPreview.Columns.Add("Status", 100);
+
+            var actions = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 1,
+                BackColor = AppTheme.Surface
+            };
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
+
+            chkDistSaveMachinesFile = new CheckBox
+            {
+                Text = "Also save machines.txt",
+                Checked = true,
+                Dock = DockStyle.Fill,
+                ForeColor = AppTheme.TextPrimary,
+                BackColor = Color.Transparent,
+                FlatStyle = FlatStyle.Flat,
+                Margin = new Padding(4, 8, 4, 4)
+            };
+            chkDistCleanupOrphans = new CheckBox
+            {
+                Text = "Delete configs not in list",
+                Checked = false,
+                Dock = DockStyle.Fill,
+                ForeColor = AppTheme.TextPrimary,
+                BackColor = Color.Transparent,
+                FlatStyle = FlatStyle.Flat,
+                Margin = new Padding(4, 8, 4, 4)
+            };
+
+            var previewBtn = new AccentButton { Text = "Preview", Dock = DockStyle.Fill, Margin = new Padding(2, 4, 6, 4) };
+            previewBtn.SetSecondary();
+            previewBtn.Click += (s, e) => DistBuildPreview();
+            btnDistPreview = previewBtn;
+
+            var genBtn = new AccentButton { Text = "Generate configs", Dock = DockStyle.Fill, Margin = new Padding(6, 4, 2, 4) };
+            genBtn.SetAccent(AppTheme.Start, AppTheme.StartHover);
+            genBtn.Click += (s, e) => DistGenerateConfigs();
+            btnDistGenerate = genBtn;
+
+            actions.Controls.Add(chkDistSaveMachinesFile, 0, 0);
+            actions.Controls.Add(chkDistCleanupOrphans, 1, 0);
+            actions.Controls.Add(btnDistPreview, 2, 0);
+            actions.Controls.Add(btnDistGenerate, 3, 0);
+
+            layout.Controls.Add(lblDistSummary, 0, 0);
+            layout.Controls.Add(lvDistPreview, 0, 1);
+            layout.Controls.Add(actions, 0, 2);
+            body.Controls.Add(layout);
+        }
+
+        // -------------------------
+        // Admin / Config Distributor
+        // -------------------------
+        private string DistConfigFolder()
+        {
+            string folder = SafeGetText(txtConfigFolder);
+            if (string.IsNullOrWhiteSpace(folder)) folder = configFolder;
+            return folder;
+        }
+
+        private List<string> DistGetMachineListFromUi()
+        {
+            var list = new List<string>();
+            if (lstDistMachines == null) return list;
+            foreach (var item in lstDistMachines.Items)
+            {
+                if (item != null) list.Add(item.ToString());
+            }
+            return ConfigDistributor.NormalizeMachineList(list);
+        }
+
+        private void DistSetMachineList(IEnumerable<string> machines)
+        {
+            if (lstDistMachines == null) return;
+            lstDistMachines.BeginUpdate();
+            try
+            {
+                lstDistMachines.Items.Clear();
+                foreach (var m in ConfigDistributor.NormalizeMachineList(machines))
+                    lstDistMachines.Items.Add(m);
+            }
+            finally
+            {
+                lstDistMachines.EndUpdate();
+            }
+        }
+
+        private void DistAddMachineFromInput()
+        {
+            string name = SafeGetText(txtDistMachineInput);
+            if (string.IsNullOrWhiteSpace(name)) return;
+            var list = DistGetMachineListFromUi();
+            list.Add(name.Trim());
+            DistSetMachineList(list);
+            txtDistMachineInput.Text = string.Empty;
+            lastDistPlan = null;
+            if (lblDistSummary != null)
+                lblDistSummary.Text = list.Count + " machine(s) — click Preview to recalculate slots.";
+        }
+
+        private void DistRemoveSelectedMachines()
+        {
+            if (lstDistMachines == null || lstDistMachines.SelectedItems.Count == 0) return;
+            var remove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in lstDistMachines.SelectedItems)
+                remove.Add(item.ToString());
+            var kept = DistGetMachineListFromUi().Where(m => !remove.Contains(m)).ToList();
+            DistSetMachineList(kept);
+            lastDistPlan = null;
+        }
+
+        private void DistScanShareMachines()
+        {
+            try
+            {
+                EnsureShareConnected(logResult: false);
+                string folder = DistConfigFolder();
+                if (!IsDirectoryAccessible(folder))
+                {
+                    LogMessage("Admin: cannot access config folder for scan.", Color.Red);
+                    MessageBox.Show("Cannot access config folder.\nCheck Settings → Network Share Auth.", "Scan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                var found = ConfigDistributor.DiscoverMachinesFromConfigs(folder);
+                DistSetMachineList(found);
+                LogMessage("Admin: scanned " + found.Count + " machine config(s) from share.", Color.Blue);
+                statusLabel.Text = "Scanned " + found.Count + " machines from share";
+                lastDistPlan = null;
+                if (lblDistSummary != null)
+                    lblDistSummary.Text = found.Count + " machine(s) from share — click Preview.";
+            }
+            catch (Exception ex)
+            {
+                LogMessage("Admin scan failed: " + ex.Message, Color.Red);
+            }
+        }
+
+        private void DistLoadMachinesFile()
+        {
+            try
+            {
+                EnsureShareConnected(logResult: false);
+                string folder = DistConfigFolder();
+                string path = ConfigDistributor.MachinesFilePath(folder);
+                if (!File.Exists(path))
+                {
+                    MessageBox.Show("machines.txt not found:\n" + path + "\n\nScan share first, or Add machines manually, then Save machines.txt.", "Load list", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                var list = ConfigDistributor.LoadMachinesFile(path);
+                DistSetMachineList(list);
+                LogMessage("Admin: loaded " + list.Count + " machine(s) from machines.txt", Color.Blue);
+                statusLabel.Text = "Loaded machines.txt (" + list.Count + ")";
+                lastDistPlan = null;
+            }
+            catch (Exception ex)
+            {
+                LogMessage("Admin load machines.txt failed: " + ex.Message, Color.Red);
+            }
+        }
+
+        private void DistSaveMachinesFile()
+        {
+            try
+            {
+                EnsureShareConnected(logResult: true);
+                string folder = DistConfigFolder();
+                if (!IsDirectoryAccessible(folder))
+                {
+                    MessageBox.Show("Cannot access config folder.", "Save list", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                var list = DistGetMachineListFromUi();
+                string path = ConfigDistributor.MachinesFilePath(folder);
+                ConfigDistributor.SaveMachinesFile(path, list);
+                LogMessage("Admin: saved machines.txt (" + list.Count + ") → " + path, Color.Green);
+                statusLabel.Text = "Saved machines.txt";
+            }
+            catch (Exception ex)
+            {
+                LogMessage("Admin save machines.txt failed: " + ex.Message, Color.Red);
+                MessageBox.Show(ex.Message, "Save list", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private bool DistTryGetBaseAndEnd(out DateTime baseTime, out DateTime endTime, out string error)
+        {
+            baseTime = DateTime.MinValue;
+            endTime = DateTime.MinValue;
+            error = null;
+            try
+            {
+                DateTime date = dtpDistDate.Value.Date;
+                TimeSpan tod = dtpDistBaseTime.Value.TimeOfDay;
+                int startMs = (int)nudDistBaseMs.Value;
+                int endMs = (int)nudDistEndMs.Value;
+                baseTime = date.Add(new TimeSpan(tod.Hours, tod.Minutes, tod.Seconds)).AddMilliseconds(startMs);
+
+                if (endMs >= startMs)
+                {
+                    endTime = date.Add(new TimeSpan(tod.Hours, tod.Minutes, tod.Seconds)).AddMilliseconds(endMs);
+                }
+                else
+                {
+                    // Crosses into next second (e.g. 59.700 → 00.200)
+                    endTime = date.Add(new TimeSpan(tod.Hours, tod.Minutes, tod.Seconds)).AddSeconds(1).AddMilliseconds(endMs);
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private DistributePlan DistBuildPreview()
+        {
+            string err;
+            DateTime baseTime, endTime;
+            if (!DistTryGetBaseAndEnd(out baseTime, out endTime, out err))
+            {
+                MessageBox.Show(err ?? "Invalid schedule.", "Preview", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
+
+            var machines = DistGetMachineListFromUi();
+            if (machines.Count == 0)
+            {
+                MessageBox.Show("Machine list is empty.\nScan share, load machines.txt, or Add PCs.", "Preview", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return null;
+            }
+
+            string folder = DistConfigFolder();
+            var plan = ConfigDistributor.BuildPlan(
+                machines,
+                baseTime,
+                endTime,
+                SafeGetText(txtDistProcess) ?? "Payam",
+                (int)nudDistClickCount.Value,
+                (int)nudDistClickInterval.Value,
+                folder);
+
+            lastDistPlan = plan;
+            DistFillPreviewList(plan);
+            lblDistSummary.Text = ConfigDistributor.DescribePlan(plan);
+            if (plan.Warnings != null)
+            {
+                foreach (var w in plan.Warnings)
+                    LogMessage("Admin preview: " + w, Color.Orange);
+            }
+            LogMessage("Admin preview ready: " + ConfigDistributor.DescribePlan(plan), Color.Blue);
+            statusLabel.Text = "Preview ready — " + plan.Slots.Count + " slots";
+            return plan;
+        }
+
+        private void DistFillPreviewList(DistributePlan plan)
+        {
+            lvDistPreview.BeginUpdate();
+            try
+            {
+                lvDistPreview.Items.Clear();
+                if (plan == null || plan.Slots == null) return;
+                foreach (var slot in plan.Slots)
+                {
+                    var item = new ListViewItem(slot.SlotIndex.ToString());
+                    item.SubItems.Add(slot.MachineName);
+                    item.SubItems.Add(slot.TargetTime.ToString("yyyy/MM/dd HH:mm:ss.fff"));
+                    item.SubItems.Add(slot.MachineName + ConfigDistributor.ConfigSuffix);
+                    item.SubItems.Add(slot.HadExistingFile ? "overwrite" : "new");
+                    lvDistPreview.Items.Add(item);
+                }
+            }
+            finally
+            {
+                lvDistPreview.EndUpdate();
+            }
+        }
+
+        private void DistGenerateConfigs()
+        {
+            try
+            {
+                EnsureShareConnected(logResult: true);
+                string folder = DistConfigFolder();
+                if (!IsDirectoryAccessible(folder))
+                {
+                    MessageBox.Show("Cannot access config folder.\nCheck Settings → Network Share Auth / Config Folder.", "Generate", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var plan = lastDistPlan ?? DistBuildPreview();
+                if (plan == null || plan.Slots == null || plan.Slots.Count == 0)
+                    return;
+
+                // Rebuild with latest UI values in case schedule changed after last preview
+                plan = DistBuildPreview();
+                if (plan == null) return;
+
+                string msg = "Write " + plan.Slots.Count + " config file(s) to:\n" + folder +
+                             "\n\n" + ConfigDistributor.DescribePlan(plan) +
+                             "\n\nExisting matching files will be overwritten.";
+                if (chkDistCleanupOrphans != null && chkDistCleanupOrphans.Checked)
+                    msg += "\n\nOrphan *_config.txt files NOT in this list will be DELETED.";
+
+                if (MessageBox.Show(msg, "Generate configs", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
+                    return;
+
+                if (chkDistSaveMachinesFile != null && chkDistSaveMachinesFile.Checked)
+                {
+                    ConfigDistributor.SaveMachinesFile(ConfigDistributor.MachinesFilePath(folder), DistGetMachineListFromUi());
+                    LogMessage("Admin: machines.txt updated.", Color.Blue);
+                }
+
+                var write = ConfigDistributor.WriteConfigs(folder, plan);
+                foreach (var e in write.Errors)
+                    LogMessage("Admin write error: " + e, Color.Red);
+
+                int deleted = 0;
+                if (chkDistCleanupOrphans != null && chkDistCleanupOrphans.Checked)
+                {
+                    var clean = ConfigDistributor.CleanupOrphanConfigs(folder, DistGetMachineListFromUi());
+                    deleted = clean.Deleted;
+                    foreach (var e in clean.Errors)
+                        LogMessage("Admin cleanup error: " + e, Color.Orange);
+                    if (deleted > 0)
+                        LogMessage("Admin: deleted " + deleted + " orphan config(s).", Color.Orange);
+                }
+
+                DistFillPreviewList(plan);
+                string done = "Generated " + write.Written + " config(s)";
+                if (write.Failed > 0) done += ", " + write.Failed + " failed";
+                if (deleted > 0) done += ", " + deleted + " orphan(s) removed";
+                LogMessage("Admin: " + done, write.Failed > 0 ? Color.Orange : Color.Green);
+                statusLabel.Text = done;
+                lblDistSummary.Text = done + "  ·  " + ConfigDistributor.DescribePlan(plan);
+                MessageBox.Show(done, "Generate configs", MessageBoxButtons.OK,
+                    write.Failed > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                LogMessage("Admin generate failed: " + ex.Message, Color.Red);
+                MessageBox.Show(ex.Message, "Generate", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void BuildLogsSection()

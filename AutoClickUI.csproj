@@ -76,6 +76,7 @@
     <Compile Include="PayamTimeConfig.cs" />
     <Compile Include="PayamTimeProvider.cs" />
     <Compile Include="NetworkShareAuth.cs" />
+    <Compile Include="ConfigDistributor.cs" />
     <Compile Include="TimeSourceMode.cs" />
     <Compile Include="UiTheme.cs" />
     <Compile Include="Program.cs" />
