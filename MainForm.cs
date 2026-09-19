@@ -3019,23 +3019,13 @@ namespace AutoClickUI
         {
             try
             {
-                var baseTime = dtpTargetDate.Value.Date + dtpTargetTime.Value.TimeOfDay;
-                targetTime = baseTime.AddMilliseconds((double)nudMilliseconds.Value);
-
-                targetProcess = SafeGetText(txtTargetProcess) ?? "Payam";
-                clickCount = (int)nudClickCount.Value;
-                clickInterval = (int)nudClickInterval.Value;
+                ApplyConsoleTargetFromUi(logApplied: true);
 
                 UI(() =>
                 {
-                    lblTargetTime.Text = $"Target  ·  {targetTime:yyyy/MM/dd HH:mm:ss.fff}";
-                    lblProcessStatus.Text = $"Process  ·  {targetProcess}";
-                    lblClickCount.Text = $"Clicks  ·  {clickCount}";
                     lblConfigStatus.Text = "Config  ·  Manual";
                     lblConfigStatus.ForeColor = Color.Green;
                 });
-
-                LogMessage($"Manual settings applied. Target: {targetTime:yyyy/MM/dd HH:mm:ss.fff}", Color.Blue);
 
                 var now = GetCurrentTime();
                 if (targetTime <= now)
@@ -3064,6 +3054,9 @@ namespace AutoClickUI
         {
             try
             {
+                // Always arm from what the operator currently sees on Console.
+                ApplyConsoleTargetFromUi(logApplied: false);
+
                 if (timeSourceMode == TimeSourceMode.PayamApi)
                 {
                     // Keep UI values applied for margin/token before arming.
@@ -3091,8 +3084,21 @@ namespace AutoClickUI
                 var fireAt = GetFireThreshold();
                 if (fireAt <= now)
                 {
-                    MessageBox.Show("Target time (including safety margin) must be in the future!", "Invalid Time", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    LogMessage("Cannot start: fire threshold must be in the future!", Color.Red);
+                    string source = GetTimeSourceLabel();
+                    string detail =
+                        "Target time must be after the current synced clock.\n\n" +
+                        "Now (" + source + "):  " + now.ToString("yyyy/MM/dd HH:mm:ss.fff") + "\n" +
+                        "Target:                 " + targetTime.ToString("yyyy/MM/dd HH:mm:ss.fff") + "\n" +
+                        "Fire at (+safety):      " + fireAt.ToString("yyyy/MM/dd HH:mm:ss.fff") + "\n\n" +
+                        "What to do:\n" +
+                        "1) Admin → set TODAY's date/time → Preview → Generate configs\n" +
+                        "2) On this PC → Read Config (or set Console date/time + Use Manual Settings)\n" +
+                        "3) Wait until Live Time is synced, then START a bit before the target.";
+                    MessageBox.Show(detail, "Target time is not in the future", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    LogMessage(
+                        "Cannot start: fireAt=" + fireAt.ToString("yyyy/MM/dd HH:mm:ss.fff")
+                        + " <= now=" + now.ToString("yyyy/MM/dd HH:mm:ss.fff") + " " + source,
+                        Color.Red);
                     return;
                 }
 
@@ -3129,6 +3135,33 @@ namespace AutoClickUI
             {
                 LogMessage($"Error starting: {ex.Message}", Color.Red);
             }
+        }
+
+        /// <summary>
+        /// Syncs targetTime / process / clicks from the Console controls currently on screen.
+        /// </summary>
+        private void ApplyConsoleTargetFromUi(bool logApplied)
+        {
+            var baseTime = dtpTargetDate.Value.Date + dtpTargetTime.Value.TimeOfDay;
+            // DateTimePicker TimeOfDay may already include milliseconds on some cultures; force from nud.
+            baseTime = new DateTime(
+                baseTime.Year, baseTime.Month, baseTime.Day,
+                baseTime.Hour, baseTime.Minute, baseTime.Second, 0, baseTime.Kind);
+            targetTime = baseTime.AddMilliseconds((double)nudMilliseconds.Value);
+
+            targetProcess = SafeGetText(txtTargetProcess) ?? "Payam";
+            clickCount = (int)nudClickCount.Value;
+            clickInterval = (int)nudClickInterval.Value;
+
+            UI(() =>
+            {
+                lblTargetTime.Text = "Target  ·  " + targetTime.ToString("yyyy/MM/dd HH:mm:ss.fff");
+                lblProcessStatus.Text = "Process  ·  " + targetProcess;
+                lblClickCount.Text = "Clicks  ·  " + clickCount.ToString();
+            });
+
+            if (logApplied)
+                LogMessage("Console target applied: " + targetTime.ToString("yyyy/MM/dd HH:mm:ss.fff"), Color.Blue);
         }
 
         private void BtnStop_Click(object sender, EventArgs e)
