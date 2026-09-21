@@ -929,9 +929,9 @@ namespace AutoClickUI
         }
 
         /// <summary>
-        /// Payam F12: wait for the API NowTime second edge, then delay to Target ms + safety.
-        /// Avoids the old dual-path (GetCurrentTime vs edge) that caused early/unstable fires.
-        /// ClockBias still shifts the coarse countdown clock; final F12 is edge-scheduled.
+        /// Payam F12: wait for API NowTime to reach the target second, then wait until
+        /// Stopwatch-since-lock &gt;= TargetMs + Safety. Never subtract RTT lag (that caused
+        /// pre-:00 fires vs Payam order clock). ClockBias only affects coarse countdown.
         /// </summary>
         private void WaitForPayamEdgeFire()
         {
@@ -941,27 +941,28 @@ namespace AutoClickUI
             int targetMs = targetTime.Millisecond;
             int safety = payamConfig != null ? Math.Max(0, payamConfig.SafetyMarginMs) : 0;
             int desiredOffsetMs = targetMs + safety;
+            TimeSpan targetTod = targetSecond.TimeOfDay;
 
             LogMessage(
                 "Payam edge-fire armed: second=" + targetSecond.ToString("HH:mm:ss")
                 + " offset=" + desiredOffsetMs + "ms (targetMs=" + targetMs
-                + " + safety=" + safety + ")",
+                + " + safety=" + safety + ") | strict (no lag subtract)",
                 Color.Blue);
 
-            // 1) Coarse wait until ~1.5s before target second (uses biased clock — OK for sleeping).
+            // 1) Coarse wait until ~2s before target (biased clock — may be conservative).
             while (isWaiting)
             {
                 var now = GetCurrentTime();
                 double msToSecond = (targetSecond - now).TotalMilliseconds;
-                if (msToSecond <= 1500)
+                if (msToSecond <= 2000)
                     break;
-                int sleep = (int)Math.Min(50, Math.Max(5, msToSecond - 1200));
+                int sleep = (int)Math.Min(50, Math.Max(5, msToSecond - 1500));
                 Thread.Sleep(sleep);
             }
 
             if (!isWaiting) return;
 
-            // 2) Wait until API NowTime reaches the target second and we have a lock on it.
+            // 2) Gate on real API second, then strict offset from that second's phase-lock.
             while (isWaiting)
             {
                 DateTime lockedSecond;
@@ -984,30 +985,33 @@ namespace AutoClickUI
                     continue;
                 }
 
-                // Still before target second on API — keep waiting.
-                if (apiSecond < targetSecond)
+                TimeSpan apiTod = apiSecond.TimeOfDay;
+                int cmp = TimeSpan.Compare(apiTod, targetTod);
+
+                // Still on a previous second — never fire.
+                if (cmp < 0)
                 {
                     Thread.Sleep(2);
                     continue;
                 }
 
-                // API is already past the target second (missed) — fire ASAP.
-                if (apiSecond > targetSecond)
+                // Entire target second missed — fire late rather than skip.
+                if (cmp > 0)
                 {
                     LogMessage(
-                        "Payam edge-fire: API already past target second (" + apiText
-                        + "). Firing immediately.",
+                        "Payam edge-fire: API past target second (" + apiText
+                        + "). Firing late.",
                         Color.Orange);
                     PressF12Multiple();
                     return;
                 }
 
-                // apiSecond == targetSecond. Prefer a lock that belongs to this second.
+                // apiTod == targetTod. Need phase-lock belonging to this second.
                 bool lockIsTargetSecond =
-                    lockedSecond.Hour == targetSecond.Hour
-                    && lockedSecond.Minute == targetSecond.Minute
-                    && lockedSecond.Second == targetSecond.Second
-                    && lockedSecond.Date == targetSecond.Date;
+                    lockedSecond.TimeOfDay == targetTod
+                    || (lockedSecond.Hour == targetSecond.Hour
+                        && lockedSecond.Minute == targetSecond.Minute
+                        && lockedSecond.Second == targetSecond.Second);
 
                 if (!lockIsTargetSecond)
                 {
@@ -1015,33 +1019,42 @@ namespace AutoClickUI
                     continue;
                 }
 
-                int lag = payamTimeProvider.EstimateEdgeDetectionLagMs();
-                double waitMs = desiredOffsetMs - msSinceLock - lag;
-                LogMessage(
-                    "Payam edge lock @" + nowText
-                    + " | sinceLock=" + msSinceLock.ToString("F1")
-                    + "ms | lag≈" + lag
-                    + "ms | wait=" + waitMs.ToString("F1")
-                    + "ms | rtt≈" + rtt + "ms",
-                    Color.Blue);
+                // STRICT: do not fire until ms since THIS second's lock reaches desired offset.
+                // No RTT/lag subtraction — that pulled triggers into the previous second on Payam order time.
+                if (msSinceLock < desiredOffsetMs)
+                {
+                    double remain = desiredOffsetMs - msSinceLock;
+                    if (remain > 3)
+                        PreciseDelayMs(remain);
+                    else
+                        Thread.SpinWait(400);
+                    continue;
+                }
 
-                if (waitMs > 0)
-                    PreciseDelayMs(waitMs);
+                // Final gate: API must still be on/after target second.
+                DateTime apiSecond2;
+                string apiText2;
+                if (!payamTimeProvider.TryGetApiSecondTime(out apiSecond2, out apiText2)
+                    || apiSecond2.TimeOfDay < targetTod)
+                {
+                    LogMessage("Payam edge-fire: final API gate blocked early fire (" + apiText2 + ").", Color.Orange);
+                    Thread.Sleep(1);
+                    continue;
+                }
 
                 double after;
                 DateTime locked2;
                 string t2;
                 int r2;
                 int v2;
-                if (payamTimeProvider.TryGetPhaseLockSnapshot(out locked2, out after, out t2, out r2, out v2))
-                {
-                    LogMessage(
-                        "Payam F12 now: sinceLock=" + after.ToString("F1")
-                        + "ms | desired=" + desiredOffsetMs
-                        + "ms | NowTime=" + t2
-                        + " | modelClock=" + GetCurrentTime().ToString("HH:mm:ss.fff"),
-                        Color.Blue);
-                }
+                payamTimeProvider.TryGetPhaseLockSnapshot(out locked2, out after, out t2, out r2, out v2);
+                LogMessage(
+                    "Payam F12 now: sinceLock=" + after.ToString("F1")
+                    + "ms | desired=" + desiredOffsetMs
+                    + "ms | NowTime=" + t2
+                    + " | rtt≈" + r2
+                    + "ms | modelClock=" + GetCurrentTime().ToString("HH:mm:ss.fff"),
+                    Color.Blue);
 
                 PressF12Multiple();
                 return;
