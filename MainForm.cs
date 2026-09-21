@@ -3226,7 +3226,13 @@ namespace AutoClickUI
 
                 LogMessage($"Waiting for target time: {targetTime:yyyy/MM/dd HH:mm:ss.fff} via {DescribeTimeSourceForLog()}", Color.Blue);
                 if (timeSourceMode == TimeSourceMode.PayamApi)
-                    LogMessage($"Payam fire threshold: {fireAt:yyyy/MM/dd HH:mm:ss.fff} (safety +{payamConfig.SafetyMarginMs} ms)", Color.Blue);
+                {
+                    LogMessage(
+                        "Payam mode: F12 schedules from API second-edge + Target ms"
+                        + " (safety +" + payamConfig.SafetyMarginMs + "ms)."
+                        + " ClockBias affects countdown clock only.",
+                        Color.Blue);
+                }
             }
             catch (Exception ex)
             {
