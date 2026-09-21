@@ -35,6 +35,8 @@ namespace AutoClickUI
 
         private int _consecutiveFailures;
         private Action<string, bool> _log;
+        private int _lastRttMs;
+        private int _phaseLockVersion;
 
         public PayamTimeProvider(PayamTimeConfig config, Action<string, bool> log = null)
         {
@@ -64,6 +66,16 @@ namespace AutoClickUI
         public DateTime LastPhaseLockUtc
         {
             get { return _lastPhaseLockUtc; }
+        }
+
+        public int LastRttMs
+        {
+            get { return _lastRttMs; }
+        }
+
+        public int PhaseLockVersion
+        {
+            get { return _phaseLockVersion; }
         }
 
         public int SafetyMarginMs
@@ -159,6 +171,50 @@ namespace AutoClickUI
             return targetPayamTime.AddMilliseconds(margin);
         }
 
+        /// <summary>
+        /// Snapshot of the current second-edge phase lock for precise F12 scheduling.
+        /// msSinceLock is Stopwatch time since we observed NowTime change to lockedSecond.
+        /// </summary>
+        public bool TryGetPhaseLockSnapshot(
+            out DateTime lockedSecond,
+            out double msSinceLock,
+            out string nowTimeText,
+            out int lastRttMs,
+            out int lockVersion)
+        {
+            lock (_gate)
+            {
+                nowTimeText = _lastNowTimeText;
+                lastRttMs = _lastRttMs;
+                lockVersion = _phaseLockVersion;
+                msSinceLock = _stopwatch.IsRunning ? _stopwatch.Elapsed.TotalMilliseconds : 0;
+                if (!_hasPhaseLock || string.IsNullOrEmpty(_lastNowTimeText))
+                {
+                    lockedSecond = DateTime.MinValue;
+                    return false;
+                }
+                lockedSecond = _basePayamLocal;
+                // base is stored at second resolution (.000)
+                lockedSecond = new DateTime(
+                    lockedSecond.Year, lockedSecond.Month, lockedSecond.Day,
+                    lockedSecond.Hour, lockedSecond.Minute, lockedSecond.Second, 0, lockedSecond.Kind);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Suggested ms already elapsed inside the Payam second at the moment we lock
+        /// (half RTT, clamped). Used so edge-based F12 is not systematically late.
+        /// </summary>
+        public int EstimateEdgeDetectionLagMs()
+        {
+            int rtt = _lastRttMs;
+            int lag = rtt / 2;
+            if (lag < 0) lag = 0;
+            if (lag > 60) lag = 60;
+            return lag;
+        }
+
         public void Dispose()
         {
             Stop();
@@ -194,6 +250,7 @@ namespace AutoClickUI
 
                     _consecutiveFailures = 0;
                     _lastSuccessUtc = DateTime.UtcNow;
+                    _lastRttMs = rttMs;
                     ApplyNowTimeReading(nowText, rttMs);
                 }
                 catch (Exception ex)
@@ -243,17 +300,20 @@ namespace AutoClickUI
 
                 lock (_gate)
                 {
-                    // Lock at the second edge; ClockBiasMs in GetCurrentTime keeps us behind Payam UI.
+                    // Lock at the observed second edge. Stopwatch starts here; F12 scheduling
+                    // waits (targetMs + safety - detectionLag) from this moment.
                     _basePayamLocal = edge;
                     _stopwatch.Restart();
                     _lastNowTimeText = nowText;
                     _hasPhaseLock = true;
                     _lastPhaseLockUtc = DateTime.UtcNow;
+                    _lastRttMs = rttMs;
+                    Interlocked.Increment(ref _phaseLockVersion);
                 }
 
                 SetStatus("Payam synced (phase-locked @" + nowText + ")");
                 Log("Payam phase lock at " + edge.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)
-                    + " (rtt≈" + rttMs + "ms, bias=" + _config.ClockBiasMs + "ms)", false);
+                    + " (rtt≈" + rttMs + "ms, lag≈" + (rttMs / 2) + "ms, bias=" + _config.ClockBiasMs + "ms)", false);
             }
         }
 

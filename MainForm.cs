@@ -879,38 +879,17 @@ namespace AutoClickUI
                     LogMessage($"Warning: Process {targetProcess} is not running", Color.Orange);
                 }
 
+                if (timeSourceMode == TimeSourceMode.PayamApi && payamTimeProvider != null)
+                {
+                    WaitForPayamEdgeFire();
+                    return;
+                }
+
                 while (isWaiting)
                 {
                     var now = GetCurrentTime();
-                    // Payam mode: never fire early — wait until target + positive safety margin.
                     var fireAt = GetFireThreshold();
                     double remainingMs = (fireAt - now).TotalMilliseconds;
-
-                    // Near the target second, also accept the exact API NowTime edge
-                    // so F12 aligns with the second Payam actually exchanges.
-                    if (timeSourceMode == TimeSourceMode.PayamApi
-                        && payamTimeProvider != null
-                        && remainingMs <= 1200)
-                    {
-                        DateTime apiSecond;
-                        string apiText;
-                        if (payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText))
-                        {
-                            // Target second reached on API → wait only the ms part + safety margin.
-                            var targetSecond = new DateTime(
-                                fireAt.Year, fireAt.Month, fireAt.Day,
-                                fireAt.Hour, fireAt.Minute, fireAt.Second, 0, fireAt.Kind);
-                            if (apiSecond >= targetSecond)
-                            {
-                                // fireAt may include ms + safety margin beyond the whole second.
-                                double afterSecondMs = (fireAt - targetSecond).TotalMilliseconds;
-                                if (afterSecondMs > 0)
-                                    PreciseDelayMs(afterSecondMs);
-                                PressF12Multiple();
-                                break;
-                            }
-                        }
-                    }
 
                     if (remainingMs <= 0)
                     {
@@ -918,7 +897,6 @@ namespace AutoClickUI
                         break;
                     }
 
-                    // coarse sleep then fine spin
                     if (remainingMs > 25)
                     {
                         int sleepMs = (int)Math.Min(10, Math.Max(1, remainingMs - 15));
@@ -926,7 +904,6 @@ namespace AutoClickUI
                     }
                     else
                     {
-                        // last ~25ms: spin for accuracy
                         Thread.SpinWait(800);
                     }
                 }
@@ -948,6 +925,126 @@ namespace AutoClickUI
                     isWaiting = false;
                     statusLabel.Text = "Ready";
                 });
+            }
+        }
+
+        /// <summary>
+        /// Payam F12: wait for the API NowTime second edge, then delay to Target ms + safety.
+        /// Avoids the old dual-path (GetCurrentTime vs edge) that caused early/unstable fires.
+        /// ClockBias still shifts the coarse countdown clock; final F12 is edge-scheduled.
+        /// </summary>
+        private void WaitForPayamEdgeFire()
+        {
+            var targetSecond = new DateTime(
+                targetTime.Year, targetTime.Month, targetTime.Day,
+                targetTime.Hour, targetTime.Minute, targetTime.Second, 0, targetTime.Kind);
+            int targetMs = targetTime.Millisecond;
+            int safety = payamConfig != null ? Math.Max(0, payamConfig.SafetyMarginMs) : 0;
+            int desiredOffsetMs = targetMs + safety;
+
+            LogMessage(
+                "Payam edge-fire armed: second=" + targetSecond.ToString("HH:mm:ss")
+                + " offset=" + desiredOffsetMs + "ms (targetMs=" + targetMs
+                + " + safety=" + safety + ")",
+                Color.Blue);
+
+            // 1) Coarse wait until ~1.5s before target second (uses biased clock — OK for sleeping).
+            while (isWaiting)
+            {
+                var now = GetCurrentTime();
+                double msToSecond = (targetSecond - now).TotalMilliseconds;
+                if (msToSecond <= 1500)
+                    break;
+                int sleep = (int)Math.Min(50, Math.Max(5, msToSecond - 1200));
+                Thread.Sleep(sleep);
+            }
+
+            if (!isWaiting) return;
+
+            // 2) Wait until API NowTime reaches the target second and we have a lock on it.
+            while (isWaiting)
+            {
+                DateTime lockedSecond;
+                double msSinceLock;
+                string nowText;
+                int rtt;
+                int lockVersion;
+                if (!payamTimeProvider.TryGetPhaseLockSnapshot(
+                    out lockedSecond, out msSinceLock, out nowText, out rtt, out lockVersion))
+                {
+                    Thread.Sleep(5);
+                    continue;
+                }
+
+                DateTime apiSecond;
+                string apiText;
+                if (!payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText))
+                {
+                    Thread.Sleep(5);
+                    continue;
+                }
+
+                // Still before target second on API — keep waiting.
+                if (apiSecond < targetSecond)
+                {
+                    Thread.Sleep(2);
+                    continue;
+                }
+
+                // API is already past the target second (missed) — fire ASAP.
+                if (apiSecond > targetSecond)
+                {
+                    LogMessage(
+                        "Payam edge-fire: API already past target second (" + apiText
+                        + "). Firing immediately.",
+                        Color.Orange);
+                    PressF12Multiple();
+                    return;
+                }
+
+                // apiSecond == targetSecond. Prefer a lock that belongs to this second.
+                bool lockIsTargetSecond =
+                    lockedSecond.Hour == targetSecond.Hour
+                    && lockedSecond.Minute == targetSecond.Minute
+                    && lockedSecond.Second == targetSecond.Second
+                    && lockedSecond.Date == targetSecond.Date;
+
+                if (!lockIsTargetSecond)
+                {
+                    Thread.SpinWait(200);
+                    continue;
+                }
+
+                int lag = payamTimeProvider.EstimateEdgeDetectionLagMs();
+                double waitMs = desiredOffsetMs - msSinceLock - lag;
+                LogMessage(
+                    "Payam edge lock @" + nowText
+                    + " | sinceLock=" + msSinceLock.ToString("F1")
+                    + "ms | lag≈" + lag
+                    + "ms | wait=" + waitMs.ToString("F1")
+                    + "ms | rtt≈" + rtt + "ms",
+                    Color.Blue);
+
+                if (waitMs > 0)
+                    PreciseDelayMs(waitMs);
+
+                double after;
+                DateTime locked2;
+                string t2;
+                int r2;
+                int v2;
+                if (payamTimeProvider.TryGetPhaseLockSnapshot(out locked2, out after, out t2, out r2, out v2))
+                {
+                    LogMessage(
+                        "Payam F12 now: sinceLock=" + after.ToString("F1")
+                        + "ms | desired=" + desiredOffsetMs
+                        + "ms | NowTime=" + t2
+                        + " | modelClock=" + GetCurrentTime().ToString("HH:mm:ss.fff"),
+                        Color.Blue);
+                }
+
+                PressF12Multiple();
+                return;
             }
         }
 
@@ -2081,7 +2178,7 @@ namespace AutoClickUI
             AddLabeledField(bias, 0, "CLOCK BIAS (MS)", nudClockBias);
             var marginHint = new Label
             {
-                Text = "Bias applies instantly. Raise it if AutoClick is still ahead of Payam UI.",
+                Text = "Bias shifts countdown clock. Final F12 uses API second-edge + Target ms (more stable).",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Margin = new Padding(8, 2, 2, 2)
