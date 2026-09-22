@@ -49,16 +49,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestCertificateThumbprint>ECCC024788977F85071D78E82E627F0D3E471E11</ManifestCertificateThumbprint>
-  </PropertyGroup>
-  <PropertyGroup>
-    <ManifestKeyFile>AutoClickUI_TemporaryKey.pfx</ManifestKeyFile>
-  </PropertyGroup>
-  <PropertyGroup>
-    <GenerateManifests>true</GenerateManifests>
-  </PropertyGroup>
-  <PropertyGroup>
-    <SignManifests>true</SignManifests>
+    <!-- ClickOnce signing disabled: TemporaryKey.pfx was removed from repo / cert store mismatch. -->
+    <GenerateManifests>false</GenerateManifests>
+    <SignManifests>false</SignManifests>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>icon-2.ico</ApplicationIcon>
@@ -80,6 +73,12 @@
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="PayamTimeConfig.cs" />
+    <Compile Include="PayamTimeProvider.cs" />
+    <Compile Include="NetworkShareAuth.cs" />
+    <Compile Include="ConfigDistributor.cs" />
+    <Compile Include="TimeSourceMode.cs" />
+    <Compile Include="UiTheme.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Content Include="icon-2.ico" />
@@ -92,9 +91,9 @@
       <SubType>Designer</SubType>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
-    <Content Include="AutoClickUI_TemporaryKey.pfx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <None Include="AutoClickUI_TemporaryKey.pfx" Condition="Exists('AutoClickUI_TemporaryKey.pfx')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
