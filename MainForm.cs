@@ -3395,9 +3395,10 @@ namespace AutoClickUI
                 if (timeSourceMode == TimeSourceMode.PayamApi)
                 {
                     LogMessage(
-                        "Payam mode: F12 schedules from API second-edge + Target ms"
-                        + " (safety +" + payamConfig.SafetyMarginMs + "ms)."
-                        + " ClockBias affects countdown clock only.",
+                        "Payam mode: keep-alive + fast-poll; F12 = DelayAfterSecond ("
+                        + payamConfig.DelayAfterSecondMs + "ms) after NowTime edge"
+                        + (payamConfig.SafetyMarginMs > 0 ? (" + safety " + payamConfig.SafetyMarginMs + "ms") : "")
+                        + ".",
                         Color.Blue);
                 }
             }
