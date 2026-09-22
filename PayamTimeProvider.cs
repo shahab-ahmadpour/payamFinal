@@ -11,7 +11,8 @@ namespace AutoClickUI
 {
     /// <summary>
     /// Reads Payam PeriodicData NowTime (second precision) over raw TCP/HTTP
-    /// and phase-locks a Stopwatch on each second-edge change for ~ms resolution.
+    /// with a persistent keep-alive connection and phase-locks a Stopwatch on
+    /// each second-edge change for DelayAfterSecondMs scheduling.
     /// </summary>
     public sealed class PayamTimeProvider : IDisposable
     {
@@ -20,6 +21,7 @@ namespace AutoClickUI
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private readonly object _gate = new object();
+        private readonly object _ioGate = new object();
         private readonly Stopwatch _stopwatch = new Stopwatch();
 
         private PayamTimeConfig _config;
@@ -27,6 +29,7 @@ namespace AutoClickUI
         private volatile bool _running;
         private volatile bool _hasPhaseLock;
         private volatile bool _hasAnyReading;
+        private volatile bool _armedFastPoll;
         private DateTime _basePayamLocal;
         private string _lastNowTimeText = string.Empty;
         private string _status = "Not synced";
@@ -38,61 +41,64 @@ namespace AutoClickUI
         private int _lastRttMs;
         private int _phaseLockVersion;
 
+        private TcpClient _client;
+        private NetworkStream _stream;
+        private string _endpointKey = string.Empty;
+        private bool _loggedKeepAlive;
+
         public PayamTimeProvider(PayamTimeConfig config, Action<string, bool> log = null)
         {
             _config = config ?? new PayamTimeConfig();
             _log = log;
         }
 
-        public bool HasSync => _hasPhaseLock || _hasAnyReading;
-
-        public bool HasPhaseLock => _hasPhaseLock;
-
-        public string Status
-        {
-            get { return _status; }
-        }
-
-        public string LastNowTimeText
-        {
-            get { return _lastNowTimeText; }
-        }
-
-        public DateTime LastSuccessUtc
-        {
-            get { return _lastSuccessUtc; }
-        }
-
-        public DateTime LastPhaseLockUtc
-        {
-            get { return _lastPhaseLockUtc; }
-        }
-
-        public int LastRttMs
-        {
-            get { return _lastRttMs; }
-        }
-
-        public int PhaseLockVersion
-        {
-            get { return _phaseLockVersion; }
-        }
+        public bool HasSync { get { return _hasPhaseLock || _hasAnyReading; } }
+        public bool HasPhaseLock { get { return _hasPhaseLock; } }
+        public string Status { get { return _status; } }
+        public string LastNowTimeText { get { return _lastNowTimeText; } }
+        public DateTime LastSuccessUtc { get { return _lastSuccessUtc; } }
+        public DateTime LastPhaseLockUtc { get { return _lastPhaseLockUtc; } }
+        public int LastRttMs { get { return _lastRttMs; } }
+        public int PhaseLockVersion { get { return _phaseLockVersion; } }
+        public bool ArmedFastPoll { get { return _armedFastPoll; } }
 
         public int SafetyMarginMs
         {
-            get
-            {
-                lock (_gate) return _config.SafetyMarginMs;
-            }
+            get { lock (_gate) return _config.SafetyMarginMs; }
+        }
+
+        public int DelayAfterSecondMs
+        {
+            get { lock (_gate) return _config.DelayAfterSecondMs; }
         }
 
         public void UpdateConfig(PayamTimeConfig config)
         {
             if (config == null) return;
+            bool endpointChanged;
             lock (_gate)
             {
+                endpointChanged = _config == null
+                    || !string.Equals(_config.ApiUrl, config.ApiUrl, StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(_config.YearCode, config.YearCode, StringComparison.Ordinal)
+                    || !string.Equals(_config.ContentTypeOptions, config.ContentTypeOptions, StringComparison.Ordinal);
                 _config = config;
             }
+            if (endpointChanged)
+            {
+                lock (_ioGate)
+                    CloseConnection_NoLock();
+            }
+        }
+
+        /// <summary>When armed, poll at ArmedPollIntervalMs for tighter second-edge detection.</summary>
+        public void SetArmedFastPoll(bool armed)
+        {
+            _armedFastPoll = armed;
+            if (armed)
+                Log("Payam fast-poll ARMED (" + GetArmedPollMs() + "ms).", false);
+            else
+                Log("Payam fast-poll idle.", false);
         }
 
         public void Start()
@@ -111,10 +117,12 @@ namespace AutoClickUI
         public void Stop()
         {
             _running = false;
+            _armedFastPoll = false;
             var t = _worker;
             if (t != null && t.IsAlive)
                 t.Join(1500);
             _worker = null;
+            lock (_ioGate) CloseConnection_NoLock();
         }
 
         public DateTime GetCurrentTime()
@@ -124,16 +132,11 @@ namespace AutoClickUI
                 if (!_hasPhaseLock && !_hasAnyReading)
                     return DateTime.Now;
 
-                // ClockBiasMs pulls our clock behind Payam so Live Time / F12 never lead the Payam UI.
                 int bias = Math.Max(0, _config.ClockBiasMs);
                 return _basePayamLocal.AddMilliseconds(_stopwatch.Elapsed.TotalMilliseconds - bias);
             }
         }
 
-        /// <summary>
-        /// Exact second currently reported by Payam PeriodicData (no invented milliseconds).
-        /// This matches the NowTime string exchanged by Payam.
-        /// </summary>
         public bool TryGetApiSecondTime(out DateTime secondTime, out string nowTimeText)
         {
             lock (_gate)
@@ -146,7 +149,6 @@ namespace AutoClickUI
                 }
 
                 secondTime = CombineWithToday(_lastNowTimeText);
-                // Keep calendar day consistent with running model near midnight.
                 if (_hasPhaseLock || _hasAnyReading)
                 {
                     DateTime running = _basePayamLocal.AddMilliseconds(_stopwatch.Elapsed.TotalMilliseconds);
@@ -161,20 +163,23 @@ namespace AutoClickUI
             }
         }
 
-        /// <summary>
-        /// Effective fire threshold: target Payam time + positive safety margin.
-        /// </summary>
         public DateTime GetFireThreshold(DateTime targetPayamTime)
         {
             int margin;
-            lock (_gate) margin = Math.Max(0, _config.SafetyMarginMs);
-            return targetPayamTime.AddMilliseconds(margin);
+            int delay;
+            lock (_gate)
+            {
+                margin = Math.Max(0, _config.SafetyMarginMs);
+                delay = Math.Max(0, _config.DelayAfterSecondMs);
+            }
+            // Prefer explicit delay-after-second when set; else fall back to target ms.
+            var second = new DateTime(
+                targetPayamTime.Year, targetPayamTime.Month, targetPayamTime.Day,
+                targetPayamTime.Hour, targetPayamTime.Minute, targetPayamTime.Second, 0, targetPayamTime.Kind);
+            int offset = delay > 0 ? delay : targetPayamTime.Millisecond;
+            return second.AddMilliseconds(offset + margin);
         }
 
-        /// <summary>
-        /// Snapshot of the current second-edge phase lock for precise F12 scheduling.
-        /// msSinceLock is Stopwatch time since we observed NowTime change to lockedSecond.
-        /// </summary>
         public bool TryGetPhaseLockSnapshot(
             out DateTime lockedSecond,
             out double msSinceLock,
@@ -194,7 +199,6 @@ namespace AutoClickUI
                     return false;
                 }
                 lockedSecond = _basePayamLocal;
-                // base is stored at second resolution (.000)
                 lockedSecond = new DateTime(
                     lockedSecond.Year, lockedSecond.Month, lockedSecond.Day,
                     lockedSecond.Hour, lockedSecond.Minute, lockedSecond.Second, 0, lockedSecond.Kind);
@@ -202,14 +206,9 @@ namespace AutoClickUI
             }
         }
 
-        /// <summary>
-        /// Suggested ms already elapsed inside the Payam second at the moment we lock
-        /// (half RTT, clamped). Used so edge-based F12 is not systematically late.
-        /// </summary>
         public int EstimateEdgeDetectionLagMs()
         {
-            int rtt = _lastRttMs;
-            int lag = rtt / 2;
+            int lag = _lastRttMs / 2;
             if (lag < 0) lag = 0;
             if (lag > 60) lag = 60;
             return lag;
@@ -220,9 +219,20 @@ namespace AutoClickUI
             Stop();
         }
 
+        private int GetArmedPollMs()
+        {
+            lock (_gate)
+            {
+                int v = _config.ArmedPollIntervalMs;
+                if (v < 5) v = 5;
+                if (v > 50) v = 50;
+                return v;
+            }
+        }
+
         private void SyncLoop()
         {
-            Log("Payam time sync loop started.", false);
+            Log("Payam time sync loop started (keep-alive).", false);
 
             while (_running)
             {
@@ -231,11 +241,13 @@ namespace AutoClickUI
                 {
                     PayamTimeConfig cfg;
                     lock (_gate) cfg = CloneConfig(_config);
-                    sleepMs = Math.Max(10, cfg.PollIntervalMs);
+                    sleepMs = _armedFastPoll
+                        ? GetArmedPollMs()
+                        : Math.Max(10, cfg.PollIntervalMs);
 
                     string json;
                     var rttSw = Stopwatch.StartNew();
-                    json = FetchPeriodicDataRaw(cfg);
+                    json = FetchPeriodicDataKeepAlive(cfg);
                     rttSw.Stop();
                     int rttMs = (int)Math.Max(0, Math.Min(250, rttSw.ElapsedMilliseconds));
 
@@ -256,22 +268,23 @@ namespace AutoClickUI
                 catch (Exception ex)
                 {
                     _consecutiveFailures++;
+                    lock (_ioGate) CloseConnection_NoLock();
                     SetStatus("Payam sync error: " + Truncate(ex.Message, 80));
                     if (_consecutiveFailures == 1 || _consecutiveFailures % 25 == 0)
                         Log("Payam PeriodicData fetch failed: " + ex.Message, true);
-                    Thread.Sleep(Math.Max(sleepMs, 200));
+                    Thread.Sleep(Math.Max(sleepMs, 150));
                     continue;
                 }
 
                 Thread.Sleep(sleepMs);
             }
 
+            lock (_ioGate) CloseConnection_NoLock();
             Log("Payam time sync loop stopped.", false);
         }
 
         private void ApplyNowTimeReading(string nowText, int rttMs)
         {
-            // First reading: provisional lock at second boundary until edge arrives.
             if (!_hasAnyReading)
             {
                 DateTime provisional = CombineWithToday(nowText);
@@ -288,11 +301,9 @@ namespace AutoClickUI
                 return;
             }
 
-            // Second-edge phase lock (and continuous re-lock to correct drift).
             if (!string.Equals(nowText, _lastNowTimeText, StringComparison.Ordinal))
             {
                 DateTime edge = CombineWithToday(nowText);
-                // Handle midnight wrap relative to previous reading.
                 DateTime previous;
                 lock (_gate) previous = _basePayamLocal;
                 if (edge < previous.AddMinutes(-30))
@@ -300,8 +311,6 @@ namespace AutoClickUI
 
                 lock (_gate)
                 {
-                    // Lock at the observed second edge. Stopwatch starts here; F12 scheduling
-                    // waits (targetMs + safety - detectionLag) from this moment.
                     _basePayamLocal = edge;
                     _stopwatch.Restart();
                     _lastNowTimeText = nowText;
@@ -312,8 +321,8 @@ namespace AutoClickUI
                 }
 
                 SetStatus("Payam synced (phase-locked @" + nowText + ")");
-                Log("Payam phase lock at " + edge.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)
-                    + " (rtt≈" + rttMs + "ms, lag≈" + (rttMs / 2) + "ms, bias=" + _config.ClockBiasMs + "ms)", false);
+                Log("Payam phase lock @" + edge.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+                    + " (rtt≈" + rttMs + "ms, keep-alive, armed=" + _armedFastPoll + ")", false);
             }
         }
 
@@ -331,101 +340,199 @@ namespace AutoClickUI
             return new DateTime(today.Year, today.Month, today.Day, tod.Hours, tod.Minutes, tod.Seconds, 0, DateTimeKind.Local);
         }
 
-        /// <summary>
-        /// Minimal raw HTTP/1.1 GET — no User-Agent/Accept (Payam returns 400 if extras are present).
-        /// Uses a short-lived connection with TCP_NODELAY for lower second-edge latency.
-        /// </summary>
-        internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
+        private string FetchPeriodicDataKeepAlive(PayamTimeConfig cfg)
         {
-            if (cfg == null) throw new ArgumentNullException("cfg");
-            if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
-                throw new InvalidOperationException("Payam ApiUrl is empty.");
+            lock (_ioGate)
+            {
+                try
+                {
+                    EnsureConnected_NoLock(cfg);
+                    return WriteRequestAndReadBody_NoLock(cfg, keepAlive: true);
+                }
+                catch
+                {
+                    CloseConnection_NoLock();
+                    EnsureConnected_NoLock(cfg);
+                    return WriteRequestAndReadBody_NoLock(cfg, keepAlive: true);
+                }
+            }
+        }
 
+        private void EnsureConnected_NoLock(PayamTimeConfig cfg)
+        {
             Uri uri = new Uri(cfg.ApiUrl);
             if (!string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase))
-                throw new NotSupportedException("Only http:// Payam API URLs are supported for raw TcpClient sync.");
+                throw new NotSupportedException("Only http:// Payam API URLs are supported.");
 
             string host = uri.Host;
+            int port = uri.IsDefaultPort ? 80 : uri.Port;
+            string key = host + ":" + port;
+
+            if (_client != null && _client.Connected && _stream != null && _endpointKey == key)
+                return;
+
+            CloseConnection_NoLock();
+
+            _client = new TcpClient();
+            _client.NoDelay = true;
+            _client.ReceiveBufferSize = 8192;
+            _client.SendBufferSize = 1024;
+            _client.ReceiveTimeout = 1500;
+            _client.SendTimeout = 1500;
+
+            var connectResult = _client.BeginConnect(host, port, null, null);
+            if (!connectResult.AsyncWaitHandle.WaitOne(1500))
+                throw new TimeoutException("Connect timeout to " + host + ":" + port);
+            _client.EndConnect(connectResult);
+
+            _stream = _client.GetStream();
+            _endpointKey = key;
+
+            if (!_loggedKeepAlive)
+            {
+                _loggedKeepAlive = true;
+                Log("Payam keep-alive connected to " + key, false);
+            }
+        }
+
+        private void CloseConnection_NoLock()
+        {
+            try { if (_stream != null) _stream.Close(); } catch { }
+            try { if (_client != null) _client.Close(); } catch { }
+            _stream = null;
+            _client = null;
+            _endpointKey = string.Empty;
+        }
+
+        private string WriteRequestAndReadBody_NoLock(PayamTimeConfig cfg, bool keepAlive)
+        {
+            Uri uri = new Uri(cfg.ApiUrl);
             int port = uri.IsDefaultPort ? 80 : uri.Port;
             string path = string.IsNullOrEmpty(uri.PathAndQuery) ? "/" : uri.PathAndQuery;
 
             var req = new StringBuilder(256);
             req.Append("GET ").Append(path).Append(" HTTP/1.1\r\n");
-            req.Append("Host: ").Append(host).Append(':').Append(port).Append("\r\n");
+            req.Append("Host: ").Append(uri.Host).Append(':').Append(port).Append("\r\n");
             req.Append("YearCode: ").Append(cfg.YearCode ?? string.Empty).Append("\r\n");
             req.Append("X-Content-Type-Options: ").Append(cfg.ContentTypeOptions ?? string.Empty).Append("\r\n");
-            // close is required for simple framing; reconnect cost is still lower than HttpClient overhead.
-            req.Append("Connection: close\r\n");
+            req.Append(keepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
             req.Append("\r\n");
 
             byte[] requestBytes = Encoding.ASCII.GetBytes(req.ToString());
+            _stream.Write(requestBytes, 0, requestBytes.Length);
+            _stream.Flush();
 
-            using (var client = new TcpClient())
-            {
-                // Faster connect + tiny buffers for a small JSON payload.
-                client.NoDelay = true;
-                client.ReceiveBufferSize = 4096;
-                client.SendBufferSize = 1024;
-                client.ReceiveTimeout = 1500;
-                client.SendTimeout = 1500;
-
-                var connectResult = client.BeginConnect(host, port, null, null);
-                if (!connectResult.AsyncWaitHandle.WaitOne(1500))
-                    throw new TimeoutException("Connect timeout to " + host + ":" + port);
-                client.EndConnect(connectResult);
-
-                using (NetworkStream stream = client.GetStream())
-                {
-                    stream.Write(requestBytes, 0, requestBytes.Length);
-                    stream.Flush();
-
-                    string responseText = ReadAsciiResponse(stream);
-                    return ExtractHttpBody(responseText);
-                }
-            }
+            return ReadHttpResponseBody_NoLock();
         }
 
-        private static string ReadAsciiResponse(NetworkStream stream)
+        private string ReadHttpResponseBody_NoLock()
         {
-            using (var ms = new MemoryStream())
+            var ms = new MemoryStream();
+            var buffer = new byte[4096];
+
+            string text = string.Empty;
+            int sep = -1;
+            while (sep < 0)
             {
-                var buffer = new byte[4096];
-                int read;
-                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
-                    ms.Write(buffer, 0, read);
-
-                return Encoding.UTF8.GetString(ms.ToArray());
+                int n = _stream.Read(buffer, 0, buffer.Length);
+                if (n <= 0) throw new IOException("Connection closed before HTTP headers completed.");
+                ms.Write(buffer, 0, n);
+                text = Encoding.ASCII.GetString(ms.ToArray());
+                sep = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                if (ms.Length > 64 * 1024)
+                    throw new InvalidOperationException("HTTP headers too large.");
             }
-        }
 
-        private static string ExtractHttpBody(string responseText)
-        {
-            if (string.IsNullOrEmpty(responseText))
-                throw new InvalidOperationException("Empty HTTP response from Payam.");
-
-            int statusEnd = responseText.IndexOf("\r\n", StringComparison.Ordinal);
-            string statusLine = statusEnd > 0 ? responseText.Substring(0, statusEnd) : responseText;
+            string headerPart = text.Substring(0, sep);
+            int statusEnd = headerPart.IndexOf("\r\n", StringComparison.Ordinal);
+            string statusLine = statusEnd > 0 ? headerPart.Substring(0, statusEnd) : headerPart;
             if (statusLine.IndexOf(" 200 ", StringComparison.Ordinal) < 0
                 && !statusLine.EndsWith(" 200", StringComparison.Ordinal))
             {
                 throw new InvalidOperationException("Payam HTTP status: " + statusLine);
             }
 
-            int sep = responseText.IndexOf("\r\n\r\n", StringComparison.Ordinal);
-            if (sep < 0)
-                throw new InvalidOperationException("Malformed HTTP response (no header separator).");
+            int contentLength = -1;
+            foreach (var line in headerPart.Split(new[] { "\r\n" }, StringSplitOptions.None))
+            {
+                if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                    int.TryParse(line.Substring("Content-Length:".Length).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out contentLength);
+            }
 
-            return responseText.Substring(sep + 4).Trim();
+            int headerBytes = sep + 4; // ASCII headers
+            int haveBody = (int)ms.Length - headerBytes;
+            if (haveBody < 0) haveBody = 0;
+
+            if (contentLength >= 0)
+            {
+                while (haveBody < contentLength)
+                {
+                    int need = contentLength - haveBody;
+                    int n = _stream.Read(buffer, 0, Math.Min(buffer.Length, need));
+                    if (n <= 0) throw new IOException("Connection closed before body completed.");
+                    ms.Write(buffer, 0, n);
+                    haveBody += n;
+                }
+                byte[] all = ms.ToArray();
+                return Encoding.UTF8.GetString(all, headerBytes, contentLength).Trim();
+            }
+
+            // Fallback when Content-Length missing: drain briefly.
+            int oldTimeout = _client.ReceiveTimeout;
+            _client.ReceiveTimeout = 100;
+            try
+            {
+                while (ms.Length < 16 * 1024)
+                {
+                    if (!_stream.DataAvailable) break;
+                    int n = _stream.Read(buffer, 0, buffer.Length);
+                    if (n <= 0) break;
+                    ms.Write(buffer, 0, n);
+                }
+            }
+            catch (IOException) { }
+            finally
+            {
+                try { _client.ReceiveTimeout = oldTimeout; } catch { }
+            }
+
+            byte[] raw = ms.ToArray();
+            if (raw.Length <= headerBytes) return string.Empty;
+            return Encoding.UTF8.GetString(raw, headerBytes, raw.Length - headerBytes).Trim();
+        }
+
+        /// <summary>One-shot fetch (tests / fallback).</summary>
+        internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
+        {
+            if (cfg == null) throw new ArgumentNullException("cfg");
+            var temp = new PayamTimeProvider(cfg, null);
+            try
+            {
+                lock (temp._ioGate)
+                {
+                    temp.EnsureConnected_NoLock(cfg);
+                    try
+                    {
+                        return temp.WriteRequestAndReadBody_NoLock(cfg, keepAlive: false);
+                    }
+                    finally
+                    {
+                        temp.CloseConnection_NoLock();
+                    }
+                }
+            }
+            finally
+            {
+                // Do not call Stop() (would join null worker); just drop.
+            }
         }
 
         internal static bool TryExtractNowTime(string json, out string nowTime)
         {
             nowTime = null;
             if (string.IsNullOrEmpty(json)) return false;
-
             Match m = NowTimeRegex.Match(json);
             if (!m.Success) return false;
-
             nowTime = m.Groups["t"].Value;
             return !string.IsNullOrEmpty(nowTime);
         }
@@ -451,7 +558,9 @@ namespace AutoClickUI
                 ContentTypeOptions = src.ContentTypeOptions,
                 SafetyMarginMs = src.SafetyMarginMs,
                 ClockBiasMs = src.ClockBiasMs,
-                PollIntervalMs = src.PollIntervalMs
+                PollIntervalMs = src.PollIntervalMs,
+                DelayAfterSecondMs = src.DelayAfterSecondMs,
+                ArmedPollIntervalMs = src.ArmedPollIntervalMs
             };
         }
 
