@@ -232,7 +232,7 @@ namespace AutoClickUI
 
         private void SyncLoop()
         {
-            Log("Payam time sync loop started (keep-alive).", false);
+            Log("Payam time sync loop started.", false);
 
             while (_running)
             {
@@ -322,7 +322,7 @@ namespace AutoClickUI
 
                 SetStatus("Payam synced (phase-locked @" + nowText + ")");
                 Log("Payam phase lock @" + edge.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
-                    + " (rtt≈" + rttMs + "ms, keep-alive, armed=" + _armedFastPoll + ")", false);
+                    + " (rtt≈" + rttMs + "ms, armed=" + _armedFastPoll + ")", false);
             }
         }
 
@@ -342,20 +342,10 @@ namespace AutoClickUI
 
         private string FetchPeriodicDataKeepAlive(PayamTimeConfig cfg)
         {
-            lock (_ioGate)
-            {
-                try
-                {
-                    EnsureConnected_NoLock(cfg);
-                    return WriteRequestAndReadBody_NoLock(cfg, keepAlive: true);
-                }
-                catch
-                {
-                    CloseConnection_NoLock();
-                    EnsureConnected_NoLock(cfg);
-                    return WriteRequestAndReadBody_NoLock(cfg, keepAlive: true);
-                }
-            }
+            // Payam returns HTTP 400 if unexpected headers appear (incl. Connection: keep-alive
+            // on some builds). Use the proven minimal request with Connection: close.
+            // Still reuse a fresh short-lived TCP socket each poll (fast-poll remains useful).
+            return FetchPeriodicDataRaw(cfg);
         }
 
         private void EnsureConnected_NoLock(PayamTimeConfig cfg)
@@ -387,12 +377,6 @@ namespace AutoClickUI
 
             _stream = _client.GetStream();
             _endpointKey = key;
-
-            if (!_loggedKeepAlive)
-            {
-                _loggedKeepAlive = true;
-                Log("Payam keep-alive connected to " + key, false);
-            }
         }
 
         private void CloseConnection_NoLock()
@@ -404,127 +388,87 @@ namespace AutoClickUI
             _endpointKey = string.Empty;
         }
 
-        private string WriteRequestAndReadBody_NoLock(PayamTimeConfig cfg, bool keepAlive)
+        /// <summary>
+        /// Minimal raw HTTP/1.1 GET — only Host / YearCode / X-Content-Type-Options / Connection: close.
+        /// Extra headers (User-Agent, Accept, keep-alive, …) cause Payam HTTP 400.
+        /// </summary>
+        internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
         {
+            if (cfg == null) throw new ArgumentNullException("cfg");
+            if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
+                throw new InvalidOperationException("Payam ApiUrl is empty.");
+
             Uri uri = new Uri(cfg.ApiUrl);
+            if (!string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase))
+                throw new NotSupportedException("Only http:// Payam API URLs are supported for raw TcpClient sync.");
+
+            string host = uri.Host;
             int port = uri.IsDefaultPort ? 80 : uri.Port;
             string path = string.IsNullOrEmpty(uri.PathAndQuery) ? "/" : uri.PathAndQuery;
 
             var req = new StringBuilder(256);
             req.Append("GET ").Append(path).Append(" HTTP/1.1\r\n");
-            req.Append("Host: ").Append(uri.Host).Append(':').Append(port).Append("\r\n");
+            req.Append("Host: ").Append(host).Append(':').Append(port).Append("\r\n");
             req.Append("YearCode: ").Append(cfg.YearCode ?? string.Empty).Append("\r\n");
             req.Append("X-Content-Type-Options: ").Append(cfg.ContentTypeOptions ?? string.Empty).Append("\r\n");
-            req.Append(keepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
+            req.Append("Connection: close\r\n");
             req.Append("\r\n");
 
             byte[] requestBytes = Encoding.ASCII.GetBytes(req.ToString());
-            _stream.Write(requestBytes, 0, requestBytes.Length);
-            _stream.Flush();
 
-            return ReadHttpResponseBody_NoLock();
+            using (var client = new TcpClient())
+            {
+                client.NoDelay = true;
+                client.ReceiveBufferSize = 4096;
+                client.SendBufferSize = 1024;
+                client.ReceiveTimeout = 1500;
+                client.SendTimeout = 1500;
+
+                var connectResult = client.BeginConnect(host, port, null, null);
+                if (!connectResult.AsyncWaitHandle.WaitOne(1500))
+                    throw new TimeoutException("Connect timeout to " + host + ":" + port);
+                client.EndConnect(connectResult);
+
+                using (NetworkStream stream = client.GetStream())
+                {
+                    stream.Write(requestBytes, 0, requestBytes.Length);
+                    stream.Flush();
+
+                    using (var ms = new MemoryStream())
+                    {
+                        var buffer = new byte[4096];
+                        int read;
+                        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                            ms.Write(buffer, 0, read);
+
+                        string responseText = Encoding.UTF8.GetString(ms.ToArray());
+                        return ExtractHttpBody(responseText);
+                    }
+                }
+            }
         }
 
-        private string ReadHttpResponseBody_NoLock()
+        private static string ExtractHttpBody(string responseText)
         {
-            var ms = new MemoryStream();
-            var buffer = new byte[4096];
+            if (string.IsNullOrEmpty(responseText))
+                throw new InvalidOperationException("Empty HTTP response from Payam.");
 
-            string text = string.Empty;
-            int sep = -1;
-            while (sep < 0)
-            {
-                int n = _stream.Read(buffer, 0, buffer.Length);
-                if (n <= 0) throw new IOException("Connection closed before HTTP headers completed.");
-                ms.Write(buffer, 0, n);
-                text = Encoding.ASCII.GetString(ms.ToArray());
-                sep = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
-                if (ms.Length > 64 * 1024)
-                    throw new InvalidOperationException("HTTP headers too large.");
-            }
-
-            string headerPart = text.Substring(0, sep);
-            int statusEnd = headerPart.IndexOf("\r\n", StringComparison.Ordinal);
-            string statusLine = statusEnd > 0 ? headerPart.Substring(0, statusEnd) : headerPart;
+            int statusEnd = responseText.IndexOf("\r\n", StringComparison.Ordinal);
+            string statusLine = statusEnd > 0 ? responseText.Substring(0, statusEnd) : responseText;
             if (statusLine.IndexOf(" 200 ", StringComparison.Ordinal) < 0
                 && !statusLine.EndsWith(" 200", StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("Payam HTTP status: " + statusLine);
+                string hint = string.Empty;
+                if (statusLine.IndexOf("400", StringComparison.Ordinal) >= 0)
+                    hint = " — check Settings → X-Content-Type-Options (session token) / YearCode";
+                throw new InvalidOperationException("Payam HTTP status: " + statusLine + hint);
             }
 
-            int contentLength = -1;
-            foreach (var line in headerPart.Split(new[] { "\r\n" }, StringSplitOptions.None))
-            {
-                if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
-                    int.TryParse(line.Substring("Content-Length:".Length).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out contentLength);
-            }
+            int sep = responseText.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (sep < 0)
+                throw new InvalidOperationException("Malformed HTTP response (no header separator).");
 
-            int headerBytes = sep + 4; // ASCII headers
-            int haveBody = (int)ms.Length - headerBytes;
-            if (haveBody < 0) haveBody = 0;
-
-            if (contentLength >= 0)
-            {
-                while (haveBody < contentLength)
-                {
-                    int need = contentLength - haveBody;
-                    int n = _stream.Read(buffer, 0, Math.Min(buffer.Length, need));
-                    if (n <= 0) throw new IOException("Connection closed before body completed.");
-                    ms.Write(buffer, 0, n);
-                    haveBody += n;
-                }
-                byte[] all = ms.ToArray();
-                return Encoding.UTF8.GetString(all, headerBytes, contentLength).Trim();
-            }
-
-            // Fallback when Content-Length missing: drain briefly.
-            int oldTimeout = _client.ReceiveTimeout;
-            _client.ReceiveTimeout = 100;
-            try
-            {
-                while (ms.Length < 16 * 1024)
-                {
-                    if (!_stream.DataAvailable) break;
-                    int n = _stream.Read(buffer, 0, buffer.Length);
-                    if (n <= 0) break;
-                    ms.Write(buffer, 0, n);
-                }
-            }
-            catch (IOException) { }
-            finally
-            {
-                try { _client.ReceiveTimeout = oldTimeout; } catch { }
-            }
-
-            byte[] raw = ms.ToArray();
-            if (raw.Length <= headerBytes) return string.Empty;
-            return Encoding.UTF8.GetString(raw, headerBytes, raw.Length - headerBytes).Trim();
-        }
-
-        /// <summary>One-shot fetch (tests / fallback).</summary>
-        internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
-        {
-            if (cfg == null) throw new ArgumentNullException("cfg");
-            var temp = new PayamTimeProvider(cfg, null);
-            try
-            {
-                lock (temp._ioGate)
-                {
-                    temp.EnsureConnected_NoLock(cfg);
-                    try
-                    {
-                        return temp.WriteRequestAndReadBody_NoLock(cfg, keepAlive: false);
-                    }
-                    finally
-                    {
-                        temp.CloseConnection_NoLock();
-                    }
-                }
-            }
-            finally
-            {
-                // Do not call Stop() (would join null worker); just drop.
-            }
+            return responseText.Substring(sep + 4).Trim();
         }
 
         internal static bool TryExtractNowTime(string json, out string nowTime)
