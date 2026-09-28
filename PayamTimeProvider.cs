@@ -126,13 +126,26 @@ namespace AutoClickUI
 
         public DateTime GetCurrentTime()
         {
+            return GetCurrentTimeCore(applyBias: true);
+        }
+
+        /// <summary>Phase-locked Payam clock without ClockBias (for arming / fire scheduling).</summary>
+        public DateTime GetCurrentTimeUnbiased()
+        {
+            return GetCurrentTimeCore(applyBias: false);
+        }
+
+        private DateTime GetCurrentTimeCore(bool applyBias)
+        {
             lock (_gate)
             {
                 if (!_hasPhaseLock && !_hasAnyReading)
                     return DateTime.Now;
 
-                int bias = Math.Max(0, _config.ClockBiasMs);
-                return _basePayamLocal.AddMilliseconds(_stopwatch.Elapsed.TotalMilliseconds - bias);
+                double ms = _stopwatch.Elapsed.TotalMilliseconds;
+                if (applyBias)
+                    ms -= Math.Max(0, _config.ClockBiasMs);
+                return _basePayamLocal.AddMilliseconds(ms);
             }
         }
 
@@ -246,7 +259,9 @@ namespace AutoClickUI
 
                     string json;
                     var rttSw = Stopwatch.StartNew();
-                    json = FetchPeriodicDataKeepAlive(cfg);
+                    // When armed, fail fast so a slow socket cannot skip an entire second.
+                    int ioTimeoutMs = _armedFastPoll ? 280 : 1500;
+                    json = FetchPeriodicDataRaw(cfg, ioTimeoutMs);
                     rttSw.Stop();
                     int rttMs = (int)Math.Max(0, Math.Min(250, rttSw.ElapsedMilliseconds));
 
@@ -339,45 +354,6 @@ namespace AutoClickUI
             return new DateTime(today.Year, today.Month, today.Day, tod.Hours, tod.Minutes, tod.Seconds, 0, DateTimeKind.Local);
         }
 
-        private string FetchPeriodicDataKeepAlive(PayamTimeConfig cfg)
-        {
-            // Payam returns HTTP 400 if unexpected headers appear (incl. Connection: keep-alive
-            // on some builds). Use the proven minimal request with Connection: close.
-            // Still reuse a fresh short-lived TCP socket each poll (fast-poll remains useful).
-            return FetchPeriodicDataRaw(cfg);
-        }
-
-        private void EnsureConnected_NoLock(PayamTimeConfig cfg)
-        {
-            Uri uri = new Uri(cfg.ApiUrl);
-            if (!string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase))
-                throw new NotSupportedException("Only http:// Payam API URLs are supported.");
-
-            string host = uri.Host;
-            int port = uri.IsDefaultPort ? 80 : uri.Port;
-            string key = host + ":" + port;
-
-            if (_client != null && _client.Connected && _stream != null && _endpointKey == key)
-                return;
-
-            CloseConnection_NoLock();
-
-            _client = new TcpClient();
-            _client.NoDelay = true;
-            _client.ReceiveBufferSize = 8192;
-            _client.SendBufferSize = 1024;
-            _client.ReceiveTimeout = 1500;
-            _client.SendTimeout = 1500;
-
-            var connectResult = _client.BeginConnect(host, port, null, null);
-            if (!connectResult.AsyncWaitHandle.WaitOne(1500))
-                throw new TimeoutException("Connect timeout to " + host + ":" + port);
-            _client.EndConnect(connectResult);
-
-            _stream = _client.GetStream();
-            _endpointKey = key;
-        }
-
         private void CloseConnection_NoLock()
         {
             try { if (_stream != null) _stream.Close(); } catch { }
@@ -391,11 +367,13 @@ namespace AutoClickUI
         /// Minimal raw HTTP/1.1 GET — only Host / YearCode / X-API-KEY / Connection: close.
         /// Extra headers (User-Agent, Accept, keep-alive, …) cause Payam HTTP 400.
         /// </summary>
-        internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
+        internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg, int timeoutMs = 1500)
         {
             if (cfg == null) throw new ArgumentNullException("cfg");
             if (string.IsNullOrWhiteSpace(cfg.ApiUrl))
                 throw new InvalidOperationException("Payam ApiUrl is empty.");
+            if (timeoutMs < 100) timeoutMs = 100;
+            if (timeoutMs > 5000) timeoutMs = 5000;
 
             Uri uri = new Uri(cfg.ApiUrl);
             if (!string.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase))
@@ -420,11 +398,11 @@ namespace AutoClickUI
                 client.NoDelay = true;
                 client.ReceiveBufferSize = 4096;
                 client.SendBufferSize = 1024;
-                client.ReceiveTimeout = 1500;
-                client.SendTimeout = 1500;
+                client.ReceiveTimeout = timeoutMs;
+                client.SendTimeout = timeoutMs;
 
                 var connectResult = client.BeginConnect(host, port, null, null);
-                if (!connectResult.AsyncWaitHandle.WaitOne(1500))
+                if (!connectResult.AsyncWaitHandle.WaitOne(timeoutMs))
                     throw new TimeoutException("Connect timeout to " + host + ":" + port);
                 client.EndConnect(connectResult);
 
