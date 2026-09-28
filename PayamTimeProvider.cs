@@ -44,7 +44,6 @@ namespace AutoClickUI
         private TcpClient _client;
         private NetworkStream _stream;
         private string _endpointKey = string.Empty;
-        private bool _loggedKeepAlive;
 
         public PayamTimeProvider(PayamTimeConfig config, Action<string, bool> log = null)
         {
@@ -81,7 +80,7 @@ namespace AutoClickUI
                 endpointChanged = _config == null
                     || !string.Equals(_config.ApiUrl, config.ApiUrl, StringComparison.OrdinalIgnoreCase)
                     || !string.Equals(_config.YearCode, config.YearCode, StringComparison.Ordinal)
-                    || !string.Equals(_config.ContentTypeOptions, config.ContentTypeOptions, StringComparison.Ordinal);
+                    || !string.Equals(_config.ApiKey, config.ApiKey, StringComparison.Ordinal);
                 _config = config;
             }
             if (endpointChanged)
@@ -389,7 +388,7 @@ namespace AutoClickUI
         }
 
         /// <summary>
-        /// Minimal raw HTTP/1.1 GET — only Host / YearCode / X-Content-Type-Options / Connection: close.
+        /// Minimal raw HTTP/1.1 GET — only Host / YearCode / X-API-KEY / Connection: close.
         /// Extra headers (User-Agent, Accept, keep-alive, …) cause Payam HTTP 400.
         /// </summary>
         internal static string FetchPeriodicDataRaw(PayamTimeConfig cfg)
@@ -410,7 +409,7 @@ namespace AutoClickUI
             req.Append("GET ").Append(path).Append(" HTTP/1.1\r\n");
             req.Append("Host: ").Append(host).Append(':').Append(port).Append("\r\n");
             req.Append("YearCode: ").Append(cfg.YearCode ?? string.Empty).Append("\r\n");
-            req.Append("X-Content-Type-Options: ").Append(cfg.ContentTypeOptions ?? string.Empty).Append("\r\n");
+            req.Append("X-API-KEY: ").Append(cfg.ApiKey ?? string.Empty).Append("\r\n");
             req.Append("Connection: close\r\n");
             req.Append("\r\n");
 
@@ -460,7 +459,7 @@ namespace AutoClickUI
             {
                 string hint = string.Empty;
                 if (statusLine.IndexOf("400", StringComparison.Ordinal) >= 0)
-                    hint = " — check Settings → X-Content-Type-Options (session token) / YearCode";
+                    hint = " — check Settings → X-API-KEY / YearCode";
                 throw new InvalidOperationException("Payam HTTP status: " + statusLine + hint);
             }
 
@@ -499,7 +498,7 @@ namespace AutoClickUI
             {
                 ApiUrl = src.ApiUrl,
                 YearCode = src.YearCode,
-                ContentTypeOptions = src.ContentTypeOptions,
+                ApiKey = src.ApiKey,
                 SafetyMarginMs = src.SafetyMarginMs,
                 ClockBiasMs = src.ClockBiasMs,
                 PollIntervalMs = src.PollIntervalMs,

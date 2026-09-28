@@ -409,7 +409,7 @@ namespace AutoClickUI
             if (txtPayamApiUrl != null) txtPayamApiUrl.Text = payamConfig.ApiUrl ?? PayamTimeConfig.DefaultApiUrl;
             if (txtPayamYearCode != null) txtPayamYearCode.Text = payamConfig.YearCode ?? PayamTimeConfig.DefaultYearCode;
             if (txtPayamContentTypeOptions != null)
-                txtPayamContentTypeOptions.Text = payamConfig.ContentTypeOptions ?? PayamTimeConfig.DefaultContentTypeOptions;
+                txtPayamContentTypeOptions.Text = payamConfig.ApiKey ?? PayamTimeConfig.DefaultApiKey;
             if (nudSafetyMargin != null)
             {
                 int margin = Math.Max(0, Math.Min(500, payamConfig.SafetyMarginMs));
@@ -455,7 +455,7 @@ namespace AutoClickUI
 
             payamConfig.ApiUrl = apiUrl;
             payamConfig.YearCode = yearCode ?? string.Empty;
-            payamConfig.ContentTypeOptions = token ?? string.Empty;
+            payamConfig.ApiKey = token ?? string.Empty;
             payamConfig.SafetyMarginMs = (int)nudSafetyMargin.Value;
             if (nudClockBias != null)
                 payamConfig.ClockBiasMs = (int)nudClockBias.Value;
@@ -2295,7 +2295,7 @@ namespace AutoClickUI
             var mid = MakeFieldGrid(3);
             txtPayamYearCode = new TextBox { Text = PayamTimeConfig.DefaultYearCode };
             AppTheme.StyleTextBox(txtPayamYearCode);
-            txtPayamContentTypeOptions = new TextBox { Text = PayamTimeConfig.DefaultContentTypeOptions };
+            txtPayamContentTypeOptions = new TextBox { Text = PayamTimeConfig.DefaultApiKey };
             AppTheme.StyleTextBox(txtPayamContentTypeOptions);
             nudSafetyMargin = new NumericUpDown
             {
@@ -2305,7 +2305,7 @@ namespace AutoClickUI
             };
             AppTheme.StyleNumeric(nudSafetyMargin);
             AddLabeledField(mid, 0, "YEARCODE", txtPayamYearCode);
-            AddLabeledField(mid, 1, "X-CONTENT-TYPE-OPTIONS", txtPayamContentTypeOptions);
+            AddLabeledField(mid, 1, "X-API-KEY", txtPayamContentTypeOptions);
             AddLabeledField(mid, 2, "SAFETY MARGIN (MS)", nudSafetyMargin);
 
             var bias = MakeFieldGrid(3);

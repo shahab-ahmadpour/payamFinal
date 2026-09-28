@@ -6,13 +6,16 @@ using System.Text;
 namespace AutoClickUI
 {
     /// <summary>
-    /// Editable Payam PeriodicData sync settings (session token lives in X-Content-Type-Options).
+    /// Editable Payam PeriodicData sync settings (auth header is X-API-KEY).
     /// </summary>
     public sealed class PayamTimeConfig
     {
         public const string DefaultApiUrl = "http://77.36.153.35:84/api/Main/PeriodicData";
         public const string DefaultYearCode = "0";
-        public const string DefaultContentTypeOptions = "54I_s";
+        /// <summary>Value for the X-API-KEY request header (from Payam traffic).</summary>
+        public const string DefaultApiKey = "6iH47";
+        [Obsolete("Use ApiKey / X-API-KEY")]
+        public const string DefaultContentTypeOptions = DefaultApiKey;
         public const int DefaultSafetyMarginMs = 0;
         public const int DefaultPollIntervalMs = 20;
         public const int DefaultArmedPollIntervalMs = 8;
@@ -23,7 +26,14 @@ namespace AutoClickUI
 
         public string ApiUrl { get; set; } = DefaultApiUrl;
         public string YearCode { get; set; } = DefaultYearCode;
-        public string ContentTypeOptions { get; set; } = DefaultContentTypeOptions;
+        /// <summary>Sent as HTTP header X-API-KEY.</summary>
+        public string ApiKey { get; set; } = DefaultApiKey;
+        /// <summary>Backward-compatible alias for ApiKey (old configs / UI field name).</summary>
+        public string ContentTypeOptions
+        {
+            get { return ApiKey; }
+            set { ApiKey = value; }
+        }
 
         /// <summary>Extra delay after DelayAfterSecondMs (usually 0).</summary>
         public int SafetyMarginMs { get; set; } = DefaultSafetyMarginMs;
@@ -76,9 +86,11 @@ namespace AutoClickUI
                         cfg.ApiUrl = string.IsNullOrWhiteSpace(value) ? DefaultApiUrl : value;
                     else if (key.Equals("YearCode", StringComparison.OrdinalIgnoreCase))
                         cfg.YearCode = value ?? DefaultYearCode;
-                    else if (key.Equals("X-Content-Type-Options", StringComparison.OrdinalIgnoreCase)
+                    else if (key.Equals("X-API-KEY", StringComparison.OrdinalIgnoreCase)
+                             || key.Equals("ApiKey", StringComparison.OrdinalIgnoreCase)
+                             || key.Equals("X-Content-Type-Options", StringComparison.OrdinalIgnoreCase)
                              || key.Equals("ContentTypeOptions", StringComparison.OrdinalIgnoreCase))
-                        cfg.ContentTypeOptions = value ?? DefaultContentTypeOptions;
+                        cfg.ApiKey = string.IsNullOrWhiteSpace(value) ? DefaultApiKey : value;
                     else if (key.Equals("SafetyMarginMs", StringComparison.OrdinalIgnoreCase))
                     {
                         int margin;
@@ -128,10 +140,10 @@ namespace AutoClickUI
                 Directory.CreateDirectory(dir);
 
             var sb = new StringBuilder();
-            sb.AppendLine("# Payam API time sync (edit YearCode / X-Content-Type-Options per session)");
+            sb.AppendLine("# Payam API time sync (edit YearCode / X-API-KEY per session)");
             sb.AppendLine("ApiUrl=" + (ApiUrl ?? DefaultApiUrl));
             sb.AppendLine("YearCode=" + (YearCode ?? DefaultYearCode));
-            sb.AppendLine("X-Content-Type-Options=" + (ContentTypeOptions ?? DefaultContentTypeOptions));
+            sb.AppendLine("X-API-KEY=" + (ApiKey ?? DefaultApiKey));
             sb.AppendLine("DelayAfterSecondMs=" + Clamp(DelayAfterSecondMs, 0, 999).ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("SafetyMarginMs=" + Clamp(SafetyMarginMs, 0, 500).ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("ClockBiasMs=" + Clamp(ClockBiasMs, 0, 300).ToString(CultureInfo.InvariantCulture));
@@ -145,7 +157,7 @@ namespace AutoClickUI
             if (other == null) return;
             ApiUrl = other.ApiUrl;
             YearCode = other.YearCode;
-            ContentTypeOptions = other.ContentTypeOptions;
+            ApiKey = other.ApiKey;
             SafetyMarginMs = other.SafetyMarginMs;
             ClockBiasMs = other.ClockBiasMs;
             PollIntervalMs = other.PollIntervalMs;
