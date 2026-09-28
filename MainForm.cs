@@ -161,8 +161,6 @@ namespace AutoClickUI
         private NumericUpDown nudClickInterval;
         private NumericUpDown nudSafetyMargin;
         private NumericUpDown nudClockBias;
-        private NumericUpDown nudArmedPoll;
-        private CheckBox chkPayamCalibrate;
 
         private DateTimePicker dtpTargetDate;
         private DateTimePicker dtpTargetTime;
@@ -420,16 +418,6 @@ namespace AutoClickUI
                 int bias = Math.Max(0, Math.Min(300, payamConfig.ClockBiasMs));
                 nudClockBias.Value = bias;
             }
-            if (nudMilliseconds != null)
-            {
-                int delay = Math.Max(0, Math.Min(999, payamConfig.DelayAfterSecondMs));
-                nudMilliseconds.Value = delay;
-            }
-            if (nudArmedPoll != null)
-            {
-                int ap = Math.Max(5, Math.Min(50, payamConfig.ArmedPollIntervalMs));
-                nudArmedPoll.Value = ap;
-            }
         }
 
         private bool TryReadPayamConfigFromUi(out string error)
@@ -459,10 +447,6 @@ namespace AutoClickUI
             payamConfig.SafetyMarginMs = (int)nudSafetyMargin.Value;
             if (nudClockBias != null)
                 payamConfig.ClockBiasMs = (int)nudClockBias.Value;
-            if (nudMilliseconds != null)
-                payamConfig.DelayAfterSecondMs = (int)nudMilliseconds.Value;
-            if (nudArmedPoll != null)
-                payamConfig.ArmedPollIntervalMs = (int)nudArmedPoll.Value;
             return true;
         }
 
@@ -487,7 +471,7 @@ namespace AutoClickUI
             }
         }
 
-        /// <summary>Push Bias/Margin/Delay from UI into the live provider immediately.</summary>
+        /// <summary>Push Bias/Margin from UI into the live provider immediately.</summary>
         private void ApplyLivePayamTimingFromUi()
         {
             if (payamConfig == null) return;
@@ -495,10 +479,6 @@ namespace AutoClickUI
                 payamConfig.SafetyMarginMs = (int)nudSafetyMargin.Value;
             if (nudClockBias != null)
                 payamConfig.ClockBiasMs = (int)nudClockBias.Value;
-            if (nudMilliseconds != null)
-                payamConfig.DelayAfterSecondMs = (int)nudMilliseconds.Value;
-            if (nudArmedPoll != null)
-                payamConfig.ArmedPollIntervalMs = (int)nudArmedPoll.Value;
             if (payamTimeProvider != null)
                 payamTimeProvider.UpdateConfig(payamConfig);
         }
@@ -899,17 +879,38 @@ namespace AutoClickUI
                     LogMessage($"Warning: Process {targetProcess} is not running", Color.Orange);
                 }
 
-                if (timeSourceMode == TimeSourceMode.PayamApi && payamTimeProvider != null)
-                {
-                    WaitForPayamEdgeFire();
-                    return;
-                }
-
                 while (isWaiting)
                 {
                     var now = GetCurrentTime();
+                    // Payam mode: never fire early — wait until target + positive safety margin.
                     var fireAt = GetFireThreshold();
                     double remainingMs = (fireAt - now).TotalMilliseconds;
+
+                    // Near the target second, also accept the exact API NowTime edge
+                    // so F12 aligns with the second Payam actually exchanges.
+                    if (timeSourceMode == TimeSourceMode.PayamApi
+                        && payamTimeProvider != null
+                        && remainingMs <= 1200)
+                    {
+                        DateTime apiSecond;
+                        string apiText;
+                        if (payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText))
+                        {
+                            // Target second reached on API → wait only the ms part + safety margin.
+                            var targetSecond = new DateTime(
+                                fireAt.Year, fireAt.Month, fireAt.Day,
+                                fireAt.Hour, fireAt.Minute, fireAt.Second, 0, fireAt.Kind);
+                            if (apiSecond >= targetSecond)
+                            {
+                                // fireAt may include ms + safety margin beyond the whole second.
+                                double afterSecondMs = (fireAt - targetSecond).TotalMilliseconds;
+                                if (afterSecondMs > 0)
+                                    PreciseDelayMs(afterSecondMs);
+                                PressF12Multiple();
+                                break;
+                            }
+                        }
+                    }
 
                     if (remainingMs <= 0)
                     {
@@ -917,6 +918,7 @@ namespace AutoClickUI
                         break;
                     }
 
+                    // coarse sleep then fine spin
                     if (remainingMs > 25)
                     {
                         int sleepMs = (int)Math.Min(10, Math.Max(1, remainingMs - 15));
@@ -924,6 +926,7 @@ namespace AutoClickUI
                     }
                     else
                     {
+                        // last ~25ms: spin for accuracy
                         Thread.SpinWait(800);
                     }
                 }
@@ -946,234 +949,6 @@ namespace AutoClickUI
                     statusLabel.Text = "Ready";
                 });
             }
-        }
-
-        /// <summary>
-        /// Payam F12: fire when unbiased phase-lock clock reaches targetSecond + DelayAfterSecond.
-        /// API NowTime must be on the target second (blocks early). If API already moved to the
-        /// next second, abort — never fire ~1s late. Catch-up fire is allowed within the same second.
-        /// </summary>
-        private void WaitForPayamEdgeFire()
-        {
-            var targetSecond = new DateTime(
-                targetTime.Year, targetTime.Month, targetTime.Day,
-                targetTime.Hour, targetTime.Minute, targetTime.Second, 0, targetTime.Kind);
-
-            int delayAfter = payamConfig != null ? Math.Max(0, payamConfig.DelayAfterSecondMs) : targetTime.Millisecond;
-            if (delayAfter <= 0)
-                delayAfter = targetTime.Millisecond;
-            int safety = payamConfig != null ? Math.Max(0, payamConfig.SafetyMarginMs) : 0;
-            int desiredOffsetMs = delayAfter + safety;
-            DateTime fireAt = targetSecond.AddMilliseconds(desiredOffsetMs);
-            TimeSpan targetTod = targetSecond.TimeOfDay;
-            // Still inside target second → catch-up OK. Past this → abort (avoids :01.xxx shots).
-            const int lateAbortMs = 450;
-            const int apiWaitGraceMs = 400;
-
-            LogMessage(
-                "Payam edge-fire armed: fireAt=" + fireAt.ToString("HH:mm:ss.fff")
-                + " | DelayAfterSecond=" + delayAfter
-                + "ms + safety=" + safety
-                + "ms | abort if >" + lateAbortMs + "ms late or API past second | armed fast-poll",
-                Color.Blue);
-
-            try
-            {
-                if (payamTimeProvider != null)
-                    payamTimeProvider.SetArmedFastPoll(true);
-
-                while (isWaiting)
-                {
-                    if (payamTimeProvider == null || !payamTimeProvider.HasPhaseLock)
-                    {
-                        Thread.Sleep(5);
-                        continue;
-                    }
-
-                    DateTime now = payamTimeProvider.GetCurrentTimeUnbiased();
-                    double msToFire = (fireAt - now).TotalMilliseconds;
-
-                    if (msToFire > 50)
-                    {
-                        int sleep = (int)Math.Min(20, Math.Max(1, msToFire - 15));
-                        Thread.Sleep(sleep);
-                        continue;
-                    }
-
-                    if (msToFire > 0)
-                    {
-                        PreciseDelayMs(msToFire);
-                        continue;
-                    }
-
-                    DateTime apiSecond;
-                    string apiText;
-                    if (!payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText))
-                    {
-                        Thread.Sleep(1);
-                        continue;
-                    }
-
-                    int apiCmp = TimeSpan.Compare(apiSecond.TimeOfDay, targetTod);
-                    now = payamTimeProvider.GetCurrentTimeUnbiased();
-                    double lateBy = (now - fireAt).TotalMilliseconds;
-
-                    if (apiCmp > 0)
-                    {
-                        LogMessage(
-                            "Payam edge-fire ABORT: API past target second (" + apiText
-                            + "). No late F12.",
-                            Color.Red);
-                        UI(() => { statusLabel.Text = "Missed target · aborted"; });
-                        return;
-                    }
-
-                    if (apiCmp < 0)
-                    {
-                        // Clock reached fireAt but NowTime text not flipped yet — brief wait.
-                        if (lateBy > apiWaitGraceMs)
-                        {
-                            LogMessage(
-                                "Payam edge-fire ABORT: fireAt passed but API still " + apiText
-                                + " after " + lateBy.ToString("F0") + "ms.",
-                                Color.Red);
-                            UI(() => { statusLabel.Text = "Missed target · aborted"; });
-                            return;
-                        }
-                        Thread.SpinWait(400);
-                        continue;
-                    }
-
-                    // API on target second.
-                    if (lateBy > lateAbortMs)
-                    {
-                        LogMessage(
-                            "Payam edge-fire ABORT: " + lateBy.ToString("F0")
-                            + "ms past fireAt (limit " + lateAbortMs
-                            + "ms). NowTime=" + apiText,
-                            Color.Red);
-                        UI(() => { statusLabel.Text = "Missed target · aborted"; });
-                        return;
-                    }
-
-                    LogMessage(
-                        "Payam F12 now: fireAt=" + fireAt.ToString("HH:mm:ss.fff")
-                        + " | lateBy=" + lateBy.ToString("F1")
-                        + "ms | DelayAfterSecond=" + desiredOffsetMs
-                        + "ms | NowTime=" + apiText
-                        + " | rtt≈" + payamTimeProvider.LastRttMs + "ms",
-                        Color.Blue);
-
-                    PressF12Multiple();
-                    MaybeRunCalibrationDialog(desiredOffsetMs);
-                    return;
-                }
-
-                if (!isWaiting)
-                    LogMessage("Payam edge-fire stopped (cancelled).", Color.Orange);
-            }
-            finally
-            {
-                if (payamTimeProvider != null)
-                    payamTimeProvider.SetArmedFastPoll(false);
-            }
-        }
-
-        private void MaybeRunCalibrationDialog(int usedDelayMs)
-        {
-            if (chkPayamCalibrate == null || !chkPayamCalibrate.Checked)
-                return;
-
-            UI(() =>
-            {
-                try
-                {
-                    using (var dlg = new Form())
-                    {
-                        dlg.Text = "Calibrate DelayAfterSecond";
-                        dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
-                        dlg.StartPosition = FormStartPosition.CenterParent;
-                        dlg.ClientSize = new Size(420, 180);
-                        dlg.MaximizeBox = false;
-                        dlg.MinimizeBox = false;
-                        AppTheme.StyleForm(dlg);
-
-                        var lbl1 = new Label
-                        {
-                            Text = "Payam registered ms (e.g. 29 for :00.029):",
-                            Location = new Point(16, 16),
-                            Size = new Size(380, 20)
-                        };
-                        AppTheme.StyleLabel(lbl1);
-                        var nudReg = new NumericUpDown
-                        {
-                            Location = new Point(16, 40),
-                            Size = new Size(120, 24),
-                            Minimum = 0,
-                            Maximum = 999,
-                            Value = 30
-                        };
-                        AppTheme.StyleNumeric(nudReg);
-
-                        var lbl2 = new Label
-                        {
-                            Text = "Desired registered ms (goal, e.g. 10):",
-                            Location = new Point(16, 74),
-                            Size = new Size(380, 20)
-                        };
-                        AppTheme.StyleLabel(lbl2);
-                        var nudWant = new NumericUpDown
-                        {
-                            Location = new Point(16, 98),
-                            Size = new Size(120, 24),
-                            Minimum = 0,
-                            Maximum = 200,
-                            Value = 10
-                        };
-                        AppTheme.StyleNumeric(nudWant);
-
-                        var ok = new AccentButton { Text = "Apply suggestion", Location = new Point(200, 130), Size = new Size(140, 32) };
-                        ok.SetAccent(AppTheme.Accent, AppTheme.AccentDim);
-                        var cancel = new AccentButton { Text = "Skip", Location = new Point(100, 130), Size = new Size(90, 32) };
-                        cancel.SetSecondary();
-                        ok.DialogResult = DialogResult.OK;
-                        cancel.DialogResult = DialogResult.Cancel;
-                        dlg.Controls.Add(lbl1);
-                        dlg.Controls.Add(nudReg);
-                        dlg.Controls.Add(lbl2);
-                        dlg.Controls.Add(nudWant);
-                        dlg.Controls.Add(ok);
-                        dlg.Controls.Add(cancel);
-                        dlg.AcceptButton = ok;
-                        dlg.CancelButton = cancel;
-
-                        if (dlg.ShowDialog(this) != DialogResult.OK)
-                            return;
-
-                        int registered = (int)nudReg.Value;
-                        int want = (int)nudWant.Value;
-                        int delta = registered - want;
-                        int suggested = usedDelayMs - delta;
-                        if (suggested < 0) suggested = 0;
-                        if (suggested > 999) suggested = 999;
-
-                        nudMilliseconds.Value = suggested;
-                        payamConfig.DelayAfterSecondMs = suggested;
-                        ApplyLivePayamTimingFromUi();
-                        LogMessage(
-                            "Calibration: registered=" + registered
-                            + " want=" + want
-                            + " usedDelay=" + usedDelayMs
-                            + " → DelayAfterSecondMs=" + suggested,
-                            Color.Green);
-                        statusLabel.Text = "DelayAfterSecond set to " + suggested + " ms";
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogMessage("Calibration dialog error: " + ex.Message, Color.Orange);
-                }
-            });
         }
 
         // High precision wait for intervals (for key pressing sequence)
@@ -1978,22 +1753,13 @@ namespace AutoClickUI
             AppTheme.StyleDateTimePicker(dtpTargetDate);
             dtpTargetTime = new DateTimePicker { Format = DateTimePickerFormat.Time, ShowUpDown = true, Value = DateTime.Now.AddMinutes(1) };
             AppTheme.StyleDateTimePicker(dtpTargetTime);
-            nudMilliseconds = new NumericUpDown { Minimum = 0, Maximum = 999, Value = PayamTimeConfig.DefaultDelayAfterSecondMs };
+            nudMilliseconds = new NumericUpDown { Minimum = 0, Maximum = 999, Value = 0 };
             AppTheme.StyleNumeric(nudMilliseconds);
-            nudMilliseconds.ValueChanged += (s, e) =>
-            {
-                if (payamConfig != null)
-                {
-                    payamConfig.DelayAfterSecondMs = (int)nudMilliseconds.Value;
-                    if (payamTimeProvider != null)
-                        payamTimeProvider.UpdateConfig(payamConfig);
-                }
-            };
             txtTargetProcess = new TextBox { Text = "Payam" };
             AppTheme.StyleTextBox(txtTargetProcess);
             AddLabeledField(row1, 0, "TARGET DATE", dtpTargetDate);
             AddLabeledField(row1, 1, "TARGET TIME", dtpTargetTime);
-            AddLabeledField(row1, 2, "DELAY AFTER SEC", nudMilliseconds);
+            AddLabeledField(row1, 2, "MILLISECONDS", nudMilliseconds);
             AddLabeledField(row1, 3, "PROCESS", txtTargetProcess);
 
             var row2 = MakeFieldGrid(3);
@@ -2114,7 +1880,7 @@ namespace AutoClickUI
         private void BuildSettingsSection()
         {
             const int foldersH = 210;
-            const int payamH = 360;
+            const int payamH = 278;
             const int shareH = 278;
             const int gap = 12;
 
@@ -2299,7 +2065,10 @@ namespace AutoClickUI
             AddLabeledField(mid, 1, "X-API-KEY", txtPayamContentTypeOptions);
             AddLabeledField(mid, 2, "SAFETY MARGIN (MS)", nudSafetyMargin);
 
-            var bias = MakeFieldGrid(3);
+            var bias = MakeFieldGrid(2);
+            bias.ColumnStyles.Clear();
+            bias.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
+            bias.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             nudClockBias = new NumericUpDown
             {
                 Minimum = 0,
@@ -2307,41 +2076,20 @@ namespace AutoClickUI
                 Value = PayamTimeConfig.DefaultClockBiasMs
             };
             AppTheme.StyleNumeric(nudClockBias);
-            nudArmedPoll = new NumericUpDown
-            {
-                Minimum = 5,
-                Maximum = 50,
-                Value = PayamTimeConfig.DefaultArmedPollIntervalMs
-            };
-            AppTheme.StyleNumeric(nudArmedPoll);
             nudClockBias.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
             nudSafetyMargin.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
-            nudArmedPoll.ValueChanged += (s, e) => ApplyLivePayamTimingFromUi();
             AddLabeledField(bias, 0, "CLOCK BIAS (MS)", nudClockBias);
-            AddLabeledField(bias, 1, "ARMED POLL (MS)", nudArmedPoll);
             var marginHint = new Label
             {
-                Text = "F12 = Delay After Sec (Console). Bias = countdown only. Armed poll tightens edge catch.",
+                Text = "Bias applies instantly. Raise it if AutoClick is still ahead of Payam UI.",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Margin = new Padding(8, 2, 2, 2)
             };
             AppTheme.StyleLabel(marginHint, muted: true);
             marginHint.Font = AppTheme.CaptionFont;
-            bias.Controls.Add(MakeCaption("NOTE"), 2, 0);
-            bias.Controls.Add(marginHint, 2, 1);
-
-            chkPayamCalibrate = new CheckBox
-            {
-                Text = "Calibration mode (after F12 ask for Payam registered ms → suggest DelayAfterSecond)",
-                Dock = DockStyle.Top,
-                Height = 28,
-                Checked = false,
-                ForeColor = AppTheme.TextPrimary,
-                BackColor = Color.Transparent,
-                FlatStyle = FlatStyle.Flat,
-                Margin = new Padding(2, 6, 2, 4)
-            };
+            bias.Controls.Add(MakeCaption(" "), 1, 0);
+            bias.Controls.Add(marginHint, 1, 1);
 
             var actions = new TableLayoutPanel
             {
@@ -2376,7 +2124,6 @@ namespace AutoClickUI
             actions.Controls.Add(btnSyncPayam, 1, 0);
 
             body.Controls.Add(actions);
-            body.Controls.Add(chkPayamCalibrate);
             body.Controls.Add(bias);
             body.Controls.Add(mid);
             body.Controls.Add(urlRow);
@@ -3194,8 +2941,6 @@ namespace AutoClickUI
                                 dtpTargetDate.Value = parsedTime.Date;
                                 dtpTargetTime.Value = DateTime.Today.Add(parsedTime.TimeOfDay);
                                 nudMilliseconds.Value = parsedTime.Millisecond;
-                                if (payamConfig != null)
-                                    payamConfig.DelayAfterSecondMs = parsedTime.Millisecond;
                                 lblTargetTime.Text = $"Target  ·  {targetTime:yyyy/MM/dd HH:mm:ss.fff}";
                             });
                             LogMessage($"Target time set: {targetTime:yyyy/MM/dd HH:mm:ss.fff}", Color.Green);
@@ -3384,14 +3129,7 @@ namespace AutoClickUI
 
                 LogMessage($"Waiting for target time: {targetTime:yyyy/MM/dd HH:mm:ss.fff} via {DescribeTimeSourceForLog()}", Color.Blue);
                 if (timeSourceMode == TimeSourceMode.PayamApi)
-                {
-                    LogMessage(
-                        "Payam mode: keep-alive + fast-poll; F12 = DelayAfterSecond ("
-                        + payamConfig.DelayAfterSecondMs + "ms) after NowTime edge"
-                        + (payamConfig.SafetyMarginMs > 0 ? (" + safety " + payamConfig.SafetyMarginMs + "ms") : "")
-                        + ".",
-                        Color.Blue);
-                }
+                    LogMessage($"Payam fire threshold: {fireAt:yyyy/MM/dd HH:mm:ss.fff} (safety +{payamConfig.SafetyMarginMs} ms)", Color.Blue);
             }
             catch (Exception ex)
             {
@@ -3410,8 +3148,6 @@ namespace AutoClickUI
                 baseTime.Year, baseTime.Month, baseTime.Day,
                 baseTime.Hour, baseTime.Minute, baseTime.Second, 0, baseTime.Kind);
             targetTime = baseTime.AddMilliseconds((double)nudMilliseconds.Value);
-            if (payamConfig != null)
-                payamConfig.DelayAfterSecondMs = (int)nudMilliseconds.Value;
 
             targetProcess = SafeGetText(txtTargetProcess) ?? "Payam";
             clickCount = (int)nudClickCount.Value;

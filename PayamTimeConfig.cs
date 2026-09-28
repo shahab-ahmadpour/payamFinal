@@ -14,45 +14,33 @@ namespace AutoClickUI
         public const string DefaultYearCode = "0";
         /// <summary>Value for the X-API-KEY request header (from Payam traffic).</summary>
         public const string DefaultApiKey = "6iH47";
-        [Obsolete("Use ApiKey / X-API-KEY")]
         public const string DefaultContentTypeOptions = DefaultApiKey;
-        public const int DefaultSafetyMarginMs = 0;
-        public const int DefaultPollIntervalMs = 20;
-        public const int DefaultArmedPollIntervalMs = 8;
-        /// <summary>Subtract from live Payam clock so countdown never leads the Payam UI.</summary>
-        public const int DefaultClockBiasMs = 80;
-        /// <summary>Wait this many ms after NowTime second-edge before F12 (main timing knob).</summary>
-        public const int DefaultDelayAfterSecondMs = 180;
+        public const int DefaultSafetyMarginMs = 10;
+        public const int DefaultPollIntervalMs = 25;
+        /// <summary>Subtract from live Payam clock so AutoClick never leads the Payam UI.</summary>
+        public const int DefaultClockBiasMs = 60;
 
         public string ApiUrl { get; set; } = DefaultApiUrl;
         public string YearCode { get; set; } = DefaultYearCode;
         /// <summary>Sent as HTTP header X-API-KEY.</summary>
         public string ApiKey { get; set; } = DefaultApiKey;
-        /// <summary>Backward-compatible alias for ApiKey (old configs / UI field name).</summary>
+        /// <summary>Backward-compatible alias for ApiKey.</summary>
         public string ContentTypeOptions
         {
             get { return ApiKey; }
             set { ApiKey = value; }
         }
 
-        /// <summary>Extra delay after DelayAfterSecondMs (usually 0).</summary>
+        /// <summary>Positive delay after target Payam time before F12 (0..50 typical).</summary>
         public int SafetyMarginMs { get; set; } = DefaultSafetyMarginMs;
 
         public int PollIntervalMs { get; set; } = DefaultPollIntervalMs;
 
-        /// <summary>Poll interval while START is armed (tighter second-edge catch).</summary>
-        public int ArmedPollIntervalMs { get; set; } = DefaultArmedPollIntervalMs;
-
         /// <summary>
-        /// Milliseconds to hold countdown clock behind the raw phase-lock.
-        /// Does not change edge-based F12 scheduling.
+        /// Milliseconds to hold our clock behind the raw phase-lock
+        /// (fixes AutoClick appearing ahead of the Payam window).
         /// </summary>
         public int ClockBiasMs { get; set; } = DefaultClockBiasMs;
-
-        /// <summary>
-        /// Primary F12 control: milliseconds to wait after API NowTime flips to the target second.
-        /// </summary>
-        public int DelayAfterSecondMs { get; set; } = DefaultDelayAfterSecondMs;
 
         public static string DefaultConfigPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "payam_time_config.txt");
@@ -103,24 +91,12 @@ namespace AutoClickUI
                         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out poll))
                             cfg.PollIntervalMs = Clamp(poll, 10, 1000);
                     }
-                    else if (key.Equals("ArmedPollIntervalMs", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int poll;
-                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out poll))
-                            cfg.ArmedPollIntervalMs = Clamp(poll, 5, 50);
-                    }
                     else if (key.Equals("ClockBiasMs", StringComparison.OrdinalIgnoreCase)
                              || key.Equals("SyncLagMs", StringComparison.OrdinalIgnoreCase))
                     {
                         int bias;
                         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out bias))
                             cfg.ClockBiasMs = Clamp(bias, 0, 300);
-                    }
-                    else if (key.Equals("DelayAfterSecondMs", StringComparison.OrdinalIgnoreCase))
-                    {
-                        int delay;
-                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out delay))
-                            cfg.DelayAfterSecondMs = Clamp(delay, 0, 999);
                     }
                 }
             }
@@ -144,11 +120,9 @@ namespace AutoClickUI
             sb.AppendLine("ApiUrl=" + (ApiUrl ?? DefaultApiUrl));
             sb.AppendLine("YearCode=" + (YearCode ?? DefaultYearCode));
             sb.AppendLine("X-API-KEY=" + (ApiKey ?? DefaultApiKey));
-            sb.AppendLine("DelayAfterSecondMs=" + Clamp(DelayAfterSecondMs, 0, 999).ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("SafetyMarginMs=" + Clamp(SafetyMarginMs, 0, 500).ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("ClockBiasMs=" + Clamp(ClockBiasMs, 0, 300).ToString(CultureInfo.InvariantCulture));
             sb.AppendLine("PollIntervalMs=" + Clamp(PollIntervalMs, 10, 1000).ToString(CultureInfo.InvariantCulture));
-            sb.AppendLine("ArmedPollIntervalMs=" + Clamp(ArmedPollIntervalMs, 5, 50).ToString(CultureInfo.InvariantCulture));
             File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
         }
 
@@ -161,8 +135,6 @@ namespace AutoClickUI
             SafetyMarginMs = other.SafetyMarginMs;
             ClockBiasMs = other.ClockBiasMs;
             PollIntervalMs = other.PollIntervalMs;
-            DelayAfterSecondMs = other.DelayAfterSecondMs;
-            ArmedPollIntervalMs = other.ArmedPollIntervalMs;
         }
 
         private static int Clamp(int value, int min, int max)
