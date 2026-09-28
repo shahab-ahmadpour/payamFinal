@@ -948,39 +948,33 @@ namespace AutoClickUI
             }
         }
 
-        private static bool SameHms(DateTime a, DateTime b)
-        {
-            return a.Hour == b.Hour && a.Minute == b.Minute && a.Second == b.Second;
-        }
-
         /// <summary>
-        /// Payam F12: schedule from phase-lock Stopwatch (prefer previous-second lock →
-        /// 1000+DelayAfterSecond) so a missed NowTime poll cannot skip the target second.
-        /// If already late past a small grace window, abort — never fire into the next second.
+        /// Payam F12: fire when unbiased phase-lock clock reaches targetSecond + DelayAfterSecond.
+        /// API NowTime must be on the target second (blocks early). If API already moved to the
+        /// next second, abort — never fire ~1s late. Catch-up fire is allowed within the same second.
         /// </summary>
         private void WaitForPayamEdgeFire()
         {
             var targetSecond = new DateTime(
                 targetTime.Year, targetTime.Month, targetTime.Day,
                 targetTime.Hour, targetTime.Minute, targetTime.Second, 0, targetTime.Kind);
-            var previousSecond = targetSecond.AddSeconds(-1);
 
             int delayAfter = payamConfig != null ? Math.Max(0, payamConfig.DelayAfterSecondMs) : targetTime.Millisecond;
             if (delayAfter <= 0)
                 delayAfter = targetTime.Millisecond;
             int safety = payamConfig != null ? Math.Max(0, payamConfig.SafetyMarginMs) : 0;
             int desiredOffsetMs = delayAfter + safety;
+            DateTime fireAt = targetSecond.AddMilliseconds(desiredOffsetMs);
             TimeSpan targetTod = targetSecond.TimeOfDay;
-            // If we miss the fire point by more than this, do NOT send F12 (was causing :01.xxx).
-            const int lateAbortMs = 120;
+            // Still inside target second → catch-up OK. Past this → abort (avoids :01.xxx shots).
+            const int lateAbortMs = 450;
+            const int apiWaitGraceMs = 400;
 
             LogMessage(
-                "Payam edge-fire armed: second=" + targetSecond.ToString("HH:mm:ss")
+                "Payam edge-fire armed: fireAt=" + fireAt.ToString("HH:mm:ss.fff")
                 + " | DelayAfterSecond=" + delayAfter
                 + "ms + safety=" + safety
-                + "ms → fire " + desiredOffsetMs + "ms after :" + targetSecond.ToString("ss")
-                + " (or 1000+" + desiredOffsetMs + "ms from previous second lock)"
-                + " | abort if >" + lateAbortMs + "ms late | armed fast-poll",
+                + "ms | abort if >" + lateAbortMs + "ms late or API past second | armed fast-poll",
                 Color.Blue);
 
             try
@@ -990,29 +984,25 @@ namespace AutoClickUI
 
                 while (isWaiting)
                 {
-                    var now = payamTimeProvider != null
-                        ? payamTimeProvider.GetCurrentTimeUnbiased()
-                        : GetCurrentTime();
-                    double msToSecond = (targetSecond - now).TotalMilliseconds;
-                    if (msToSecond <= 2500)
-                        break;
-                    int sleep = (int)Math.Min(50, Math.Max(5, msToSecond - 2000));
-                    Thread.Sleep(sleep);
-                }
-
-                if (!isWaiting) return;
-
-                while (isWaiting)
-                {
-                    DateTime lockedSecond;
-                    double msSinceLock;
-                    string nowText;
-                    int rtt;
-                    int lockVersion;
-                    if (!payamTimeProvider.TryGetPhaseLockSnapshot(
-                        out lockedSecond, out msSinceLock, out nowText, out rtt, out lockVersion))
+                    if (payamTimeProvider == null || !payamTimeProvider.HasPhaseLock)
                     {
-                        Thread.Sleep(2);
+                        Thread.Sleep(5);
+                        continue;
+                    }
+
+                    DateTime now = payamTimeProvider.GetCurrentTimeUnbiased();
+                    double msToFire = (fireAt - now).TotalMilliseconds;
+
+                    if (msToFire > 50)
+                    {
+                        int sleep = (int)Math.Min(20, Math.Max(1, msToFire - 15));
+                        Thread.Sleep(sleep);
+                        continue;
+                    }
+
+                    if (msToFire > 0)
+                    {
+                        PreciseDelayMs(msToFire);
                         continue;
                     }
 
@@ -1020,107 +1010,67 @@ namespace AutoClickUI
                     string apiText;
                     if (!payamTimeProvider.TryGetApiSecondTime(out apiSecond, out apiText))
                     {
-                        Thread.Sleep(2);
+                        Thread.Sleep(1);
                         continue;
                     }
 
-                    TimeSpan apiTod = apiSecond.TimeOfDay;
-                    int apiCmp = TimeSpan.Compare(apiTod, targetTod);
+                    int apiCmp = TimeSpan.Compare(apiSecond.TimeOfDay, targetTod);
+                    now = payamTimeProvider.GetCurrentTimeUnbiased();
+                    double lateBy = (now - fireAt).TotalMilliseconds;
 
-                    // Hard stop: API already on a later second → never "fire late" into :01+.
                     if (apiCmp > 0)
                     {
                         LogMessage(
-                            "Payam edge-fire ABORT: API already past target (" + apiText
-                            + "). Refusing late F12 (would land ~1s+ late).",
+                            "Payam edge-fire ABORT: API past target second (" + apiText
+                            + "). No late F12.",
                             Color.Red);
+                        UI(() => { statusLabel.Text = "Missed target · aborted"; });
                         return;
                     }
 
-                    bool lockIsTarget = SameHms(lockedSecond, targetSecond);
-                    bool lockIsPrev = SameHms(lockedSecond, previousSecond);
-
-                    double fireAtSinceLock;
-                    string scheduleFrom;
-                    if (lockIsTarget)
-                    {
-                        fireAtSinceLock = desiredOffsetMs;
-                        scheduleFrom = "target-lock";
-                    }
-                    else if (lockIsPrev)
-                    {
-                        // Extrapolate across the second edge — survives a missed :00 poll.
-                        fireAtSinceLock = 1000.0 + desiredOffsetMs;
-                        scheduleFrom = "prev-lock";
-                    }
-                    else
-                    {
-                        // Still earlier than previous second, or unexpected lock.
-                        if (lockedSecond.TimeOfDay < previousSecond.TimeOfDay)
-                        {
-                            Thread.Sleep(2);
-                            continue;
-                        }
-                        Thread.SpinWait(200);
-                        continue;
-                    }
-
-                    if (msSinceLock < fireAtSinceLock)
-                    {
-                        double remain = fireAtSinceLock - msSinceLock;
-                        if (remain > 3)
-                            PreciseDelayMs(remain);
-                        else
-                            Thread.SpinWait(400);
-                        continue;
-                    }
-
-                    // Stopwatch says fire time reached, but API may still show previous second briefly.
                     if (apiCmp < 0)
                     {
-                        if (msSinceLock - fireAtSinceLock > 350)
+                        // Clock reached fireAt but NowTime text not flipped yet — brief wait.
+                        if (lateBy > apiWaitGraceMs)
                         {
                             LogMessage(
-                                "Payam edge-fire ABORT: stopwatch past fire point but API still "
-                                + apiText + " (schedule=" + scheduleFrom + ").",
+                                "Payam edge-fire ABORT: fireAt passed but API still " + apiText
+                                + " after " + lateBy.ToString("F0") + "ms.",
                                 Color.Red);
+                            UI(() => { statusLabel.Text = "Missed target · aborted"; });
                             return;
                         }
-                        Thread.SpinWait(300);
+                        Thread.SpinWait(400);
                         continue;
                     }
 
-                    double lateBy = msSinceLock - fireAtSinceLock;
+                    // API on target second.
                     if (lateBy > lateAbortMs)
                     {
                         LogMessage(
                             "Payam edge-fire ABORT: " + lateBy.ToString("F0")
-                            + "ms past fire point (limit " + lateAbortMs
-                            + "ms). schedule=" + scheduleFrom
-                            + " NowTime=" + nowText,
+                            + "ms past fireAt (limit " + lateAbortMs
+                            + "ms). NowTime=" + apiText,
                             Color.Red);
+                        UI(() => { statusLabel.Text = "Missed target · aborted"; });
                         return;
                     }
 
-                    double after;
-                    DateTime locked2;
-                    string t2;
-                    int r2;
-                    int v2;
-                    payamTimeProvider.TryGetPhaseLockSnapshot(out locked2, out after, out t2, out r2, out v2);
                     LogMessage(
-                        "Payam F12 now: schedule=" + scheduleFrom
-                        + " | sinceLock=" + after.ToString("F1")
-                        + "ms | fireAt=" + fireAtSinceLock.ToString("F0")
+                        "Payam F12 now: fireAt=" + fireAt.ToString("HH:mm:ss.fff")
+                        + " | lateBy=" + lateBy.ToString("F1")
                         + "ms | DelayAfterSecond=" + desiredOffsetMs
-                        + "ms | NowTime=" + t2
-                        + " | rtt≈" + r2 + "ms",
+                        + "ms | NowTime=" + apiText
+                        + " | rtt≈" + payamTimeProvider.LastRttMs + "ms",
                         Color.Blue);
 
                     PressF12Multiple();
                     MaybeRunCalibrationDialog(desiredOffsetMs);
                     return;
                 }
+
+                if (!isWaiting)
+                    LogMessage("Payam edge-fire stopped (cancelled).", Color.Orange);
             }
             finally
             {
