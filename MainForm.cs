@@ -2360,7 +2360,7 @@ namespace AutoClickUI
                 RowCount = 3,
                 BackColor = AppTheme.Surface
             };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
 
@@ -2369,14 +2369,16 @@ namespace AutoClickUI
                 Dock = DockStyle.Fill,
                 ColumnCount = 4,
                 RowCount = 1,
-                BackColor = AppTheme.Surface
+                BackColor = AppTheme.Surface,
+                Margin = new Padding(0),
+                Padding = new Padding(0)
             };
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72F));
-            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88F));
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F));
+            top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86F));
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96F));
 
-            txtDistMachineInput = new TextBox { Dock = DockStyle.Fill, Margin = new Padding(2), Text = "" };
+            txtDistMachineInput = new TextBox { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0), Text = "" };
             AppTheme.StyleTextBox(txtDistMachineInput);
             txtDistMachineInput.KeyDown += (s, e) =>
             {
@@ -2387,21 +2389,18 @@ namespace AutoClickUI
                 }
             };
 
-            var addBtn = new AccentButton { Text = "Add", Dock = DockStyle.Fill, Margin = new Padding(4, 2, 2, 2) };
+            var addBtn = new AccentButton { Text = "Add", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0) };
             addBtn.SetSecondary();
-            addBtn.TextAlign = ContentAlignment.MiddleCenter;
             addBtn.Click += (s, e) => DistAddMachineFromInput();
             btnDistAddMachine = addBtn;
 
-            var remBtn = new AccentButton { Text = "Remove", Dock = DockStyle.Fill, Margin = new Padding(2) };
+            var remBtn = new AccentButton { Text = "Remove", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0) };
             remBtn.SetSecondary();
-            remBtn.TextAlign = ContentAlignment.MiddleCenter;
             remBtn.Click += (s, e) => DistRemoveSelectedMachines();
             btnDistRemoveMachine = remBtn;
 
-            var scanBtn = new AccentButton { Text = "Scan share", Dock = DockStyle.Fill, Margin = new Padding(2, 2, 0, 2) };
+            var scanBtn = new AccentButton { Text = "Scan share", Dock = DockStyle.Fill, Margin = new Padding(0) };
             scanBtn.SetAccent(AppTheme.Accent, AppTheme.AccentDim);
-            scanBtn.TextAlign = ContentAlignment.MiddleCenter;
             scanBtn.Click += (s, e) => DistScanShareMachines();
             btnDistScan = scanBtn;
 

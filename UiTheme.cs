@@ -235,12 +235,15 @@ namespace AutoClickUI
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
-            Font = AppTheme.UiFontBold;
+            // Regular weight centers more reliably than Semibold+Bold in short buttons.
+            Font = AppTheme.UiFont;
             ForeColor = Color.White;
             Height = 38;
+            AutoSize = false;
             TextAlign = ContentAlignment.MiddleCenter;
             Padding = new Padding(0);
-            UseCompatibleTextRendering = true;
+            Margin = new Padding(0);
+            UseCompatibleTextRendering = false;
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint
                 | ControlStyles.OptimizedDoubleBuffer
@@ -253,21 +256,36 @@ namespace AutoClickUI
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.Clear(BackColor);
-            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            using (var bg = new SolidBrush(BackColor))
+                g.FillRectangle(bg, 0, 0, Width, Height);
 
-            if (FlatAppearance.BorderSize > 0)
+            int border = FlatAppearance.BorderSize;
+            if (border > 0)
             {
                 using (var pen = new Pen(FlatAppearance.BorderColor))
                     g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
             }
 
-            var flags = TextFormatFlags.HorizontalCenter
-                        | TextFormatFlags.VerticalCenter
-                        | TextFormatFlags.EndEllipsis
-                        | TextFormatFlags.NoPrefix
-                        | TextFormatFlags.SingleLine;
-            TextRenderer.DrawText(g, Text ?? string.Empty, Font, ClientRectangle, ForeColor, flags);
+            string text = Text ?? string.Empty;
+            if (text.Length == 0) return;
+
+            // Measure + place manually so label is truly middle-centered (avoids GDI padding bias).
+            var flags = TextFormatFlags.NoPrefix
+                        | TextFormatFlags.NoPadding
+                        | TextFormatFlags.SingleLine
+                        | TextFormatFlags.NoClipping;
+            Size textSize = TextRenderer.MeasureText(g, text, Font, new Size(1024, 1024), flags);
+            int x = (Width - textSize.Width) / 2;
+            int y = (Height - textSize.Height) / 2;
+            if (x < border) x = border;
+            if (y < border) y = border;
+            TextRenderer.DrawText(
+                g,
+                text,
+                Font,
+                new Rectangle(x, y, textSize.Width, textSize.Height),
+                ForeColor,
+                flags);
         }
 
         public void SetAccent(Color baseColor, Color hoverColor)
