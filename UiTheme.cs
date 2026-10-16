@@ -238,7 +238,36 @@ namespace AutoClickUI
             Font = AppTheme.UiFontBold;
             ForeColor = Color.White;
             Height = 38;
+            TextAlign = ContentAlignment.MiddleCenter;
+            Padding = new Padding(0);
+            UseCompatibleTextRendering = true;
+            SetStyle(
+                ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.ResizeRedraw
+                | ControlStyles.UserPaint,
+                true);
             SetAccent(AppTheme.Accent, AppTheme.AccentDim);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(BackColor);
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+            if (FlatAppearance.BorderSize > 0)
+            {
+                using (var pen = new Pen(FlatAppearance.BorderColor))
+                    g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            }
+
+            var flags = TextFormatFlags.HorizontalCenter
+                        | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.EndEllipsis
+                        | TextFormatFlags.NoPrefix
+                        | TextFormatFlags.SingleLine;
+            TextRenderer.DrawText(g, Text ?? string.Empty, Font, ClientRectangle, ForeColor, flags);
         }
 
         public void SetAccent(Color baseColor, Color hoverColor)
