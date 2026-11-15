@@ -40,7 +40,7 @@ Copy-Item (Join-Path $src "PayamAutoClick.exe.config") $out -ErrorAction Silentl
 Get-ChildItem $src -Filter "*.dll" | Copy-Item -Destination $out
 
 # Do NOT ship old local API keys / share secrets into the install pack.
-# Fresh payam_time_config.txt is created on first run with defaults (X-API-KEY=6iH47).
+# Fresh payam_time_config.txt is created on first run with defaults (current X-API-KEY).
 
 Write-Host ""
 Write-Host "OK: Release package ready:" -ForegroundColor Green
@@ -49,5 +49,5 @@ Write-Host ""
 Write-Host "Next:" -ForegroundColor Yellow
 Write-Host "  1) Copy this folder to each PC (or to \\irn-st10\payamconf\AutoClick-1.0.0.9)"
 Write-Host "  2) Run PayamAutoClick.exe"
-Write-Host "  3) Settings -> X-API-KEY = 6iH47 -> Save -> Apply/Resync"
+Write-Host "  3) Settings -> X-API-KEY (from Payam Fiddler/NetMon) -> Save -> Apply/Resync"
 Write-Host "  4) Confirm Live Time phase-lock, then do a dry-run START"

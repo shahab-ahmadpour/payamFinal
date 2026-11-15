@@ -13,7 +13,7 @@ namespace AutoClickUI
         public const string DefaultApiUrl = "http://77.36.153.35:84/api/Main/PeriodicData";
         public const string DefaultYearCode = "0";
         /// <summary>Value for the X-API-KEY request header (from Payam traffic).</summary>
-        public const string DefaultApiKey = "6iH47";
+        public const string DefaultApiKey = "y*1E8";
         public const string DefaultContentTypeOptions = DefaultApiKey;
         public const int DefaultSafetyMarginMs = 10;
         public const int DefaultPollIntervalMs = 25;
